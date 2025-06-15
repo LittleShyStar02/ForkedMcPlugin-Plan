@@ -111,7 +111,7 @@ public class CreateTableBuilder {
                 .append(referencedTable)
                 .append('(')
                 .append(referencedColumn)
-                .append(')');
+                .append(') ON DELETE CASCADE');
         constraintCount++;
         return this;
     }
