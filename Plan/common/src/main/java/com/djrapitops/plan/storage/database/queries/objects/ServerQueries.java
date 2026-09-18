@@ -26,6 +26,7 @@ import com.djrapitops.plan.storage.database.sql.tables.ServerTable;
 import com.djrapitops.plan.utilities.dev.Untrusted;
 import com.djrapitops.plan.utilities.java.Maps;
 import org.apache.commons.lang3.math.NumberUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -58,13 +59,7 @@ public class ServerQueries {
             public Collection<Server> processResults(ResultSet set) throws SQLException {
                 Collection<Server> servers = new HashSet<>();
                 while (set.next()) {
-                    servers.add(new Server(
-                            set.getInt(ServerTable.ID),
-                            ServerUUID.fromString(set.getString(ServerTable.SERVER_UUID)),
-                            set.getString(ServerTable.NAME),
-                            set.getString(ServerTable.WEB_ADDRESS),
-                            set.getBoolean(ServerTable.PROXY),
-                            set.getString(ServerTable.PLAN_VERSION)));
+                    servers.add(extractServer(set));
                 }
                 return servers;
             }
@@ -111,6 +106,12 @@ public class ServerQueries {
         return fetchServerMatchingIdentifier(serverUUID.toString());
     }
 
+    public static Query<Optional<Integer>> fetchServerId(ServerUUID serverUUID) {
+        return db -> db.queryOptional(SELECT + ID + FROM + ServerTable.TABLE_NAME +
+                        WHERE + ServerTable.SERVER_UUID + "=?",
+                row -> row.getInt(ServerTable.ID), serverUUID);
+    }
+
     public static Query<Optional<Server>> fetchServerMatchingIdentifier(@Untrusted String identifier) {
         String sql = SELECT + '*' + FROM + ServerTable.TABLE_NAME +
                 WHERE + "(LOWER(" + ServerTable.SERVER_UUID + ") LIKE LOWER(?)" +
@@ -133,13 +134,7 @@ public class ServerQueries {
             @Override
             public Optional<Server> processResults(ResultSet set) throws SQLException {
                 if (set.next()) {
-                    return Optional.of(new Server(
-                            set.getInt(ServerTable.ID),
-                            ServerUUID.fromString(set.getString(ServerTable.SERVER_UUID)),
-                            set.getString(ServerTable.NAME),
-                            set.getString(ServerTable.WEB_ADDRESS),
-                            set.getBoolean(ServerTable.PROXY),
-                            set.getString(ServerTable.PLAN_VERSION)));
+                    return Optional.of(extractServer(set));
                 }
                 return Optional.empty();
             }
@@ -150,15 +145,23 @@ public class ServerQueries {
         String sql = SELECT + '*' + FROM + ServerTable.TABLE_NAME +
                 WHERE + ServerTable.INSTALLED + "=?" +
                 AND + ServerTable.PROXY + "=?";
-        return db -> db.queryList(sql, set ->
-                new Server(
-                        set.getInt(ServerTable.ID),
-                        ServerUUID.fromString(set.getString(ServerTable.SERVER_UUID)),
-                        set.getString(ServerTable.NAME),
-                        set.getString(ServerTable.WEB_ADDRESS),
-                        set.getBoolean(ServerTable.PROXY),
-                        set.getString(ServerTable.PLAN_VERSION)
-                ), true, true
+        return db -> db.queryList(sql, ServerQueries::extractServer, true, true);
+    }
+
+    public static Query<List<Server>> fetchAllServers() {
+        String sql = SELECT + '*' + FROM + ServerTable.TABLE_NAME +
+                WHERE + ServerTable.INSTALLED + "=?";
+        return db -> db.queryList(sql, ServerQueries::extractServer, true);
+    }
+
+    private static @NotNull Server extractServer(ResultSet set) throws SQLException {
+        return new Server(
+                set.getInt(ServerTable.ID),
+                ServerUUID.fromString(set.getString(ServerTable.SERVER_UUID)),
+                set.getString(ServerTable.NAME),
+                set.getString(ServerTable.WEB_ADDRESS),
+                set.getBoolean(ServerTable.PROXY),
+                set.getString(ServerTable.PLAN_VERSION)
         );
     }
 
@@ -234,13 +237,7 @@ public class ServerQueries {
             public List<Server> processResults(ResultSet set) throws SQLException {
                 List<Server> matches = new ArrayList<>();
                 while (set.next()) {
-                    matches.add(new Server(
-                            set.getInt(ServerTable.ID),
-                            ServerUUID.fromString(set.getString(ServerTable.SERVER_UUID)),
-                            set.getString(ServerTable.NAME),
-                            set.getString(ServerTable.WEB_ADDRESS),
-                            set.getBoolean(ServerTable.PROXY),
-                            set.getString(ServerTable.PLAN_VERSION)));
+                    matches.add(extractServer(set));
                 }
                 return matches;
             }

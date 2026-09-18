@@ -3,7 +3,7 @@ import {useQueryResultContext} from "../../hooks/queryResultContext";
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faFilter} from "@fortawesome/free-solid-svg-icons";
 import {useTranslation} from "react-i18next";
-import {Link} from "react-router-dom";
+import {Link} from "react-router";
 
 const QueryPath = ({newQuery}) => {
     const {t} = useTranslation();
@@ -19,13 +19,15 @@ const QueryPath = ({newQuery}) => {
         }
 
         if (kind.startsWith("pluginGroups-")) {
-            return "Group: " + kind.substring(13);
+            return t('html.query.filter.pluginGroup.name') + kind.substring(13);
         }
         switch (kind) {
             case "allPlayers":
                 return t('html.query.filter.generic.allPlayers')
             case "activityIndexNow":
                 return t('html.query.filter.title.activityGroup');
+            case "activityIndexOn":
+                return t('html.query.filter.title.activityGroupOnDate');
             case "banned":
                 return t('html.query.filter.banStatus.name');
             case "operators":
@@ -38,12 +40,16 @@ const QueryPath = ({newQuery}) => {
                 return t('html.query.filter.playedBetween.text');
             case "registeredBetween":
                 return t('html.query.filter.registeredBetween.text');
+            case "lastSeenBetween":
+                return t('html.query.filter.lastSeenBetween.text');
             case "pluginsBooleanGroups":
                 return t('html.query.filter.hasPluginBooleanValue.name');
             case "playedOnServer":
                 return t('html.query.filter.hasPlayedOnServers.name');
+            case "playedOn":
+                return t('html.query.filter.hasPlayedOnDate.name');
             default:
-                return kind.kind;
+                return kind;
         }
     };
 
@@ -53,7 +59,7 @@ const QueryPath = ({newQuery}) => {
             {path.map((step, i) => <p key={step.kind + step.size}
                                       style={{marginBottom: 0, marginLeft: i * 0.7 + "rem"}}>
                 <FontAwesomeIcon
-                    icon={faFilter}/> '{getReadableFilterName(step.kind)}' matched {step.size} players
+                    icon={faFilter}/> '{getReadableFilterName(step.kind)}' {t('html.query.results.match', {resultCount: step.size})}
             </p>)}
         </aside>
     )

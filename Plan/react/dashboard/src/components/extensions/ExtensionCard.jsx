@@ -1,14 +1,17 @@
 import React, {useEffect, useState} from "react";
 import {Card, Col} from "react-bootstrap";
 import ExtensionIcon from "./ExtensionIcon";
-import Datapoint from "../Datapoint";
+import Datapoint from "../datapoint/Datapoint.tsx";
 import Masonry from 'masonry-layout'
 import ExtensionTable from "./ExtensionTable";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import End from "../layout/End";
 import {MinecraftChat} from "react-mcjsonchat";
 import ColoredText from "../text/ColoredText";
-import {Link} from "react-router-dom";
+import {Link} from "react-router";
+import FormattedTime from "../text/FormattedTime.jsx";
+import FormattedDate from "../text/FormattedDate.tsx";
+import {useTranslation} from "react-i18next";
 
 export const ExtensionCardWrapper = ({extension, children}) => {
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -47,6 +50,23 @@ const ExtensionTab = ({tab}) => {
     </>);
 }
 
+const valueOrUndefined = (value) => {
+    return typeof value === "undefined" ? undefined : value;
+}
+const sanitizeComponent = (component) => {
+    if (!component) return [];
+    return {
+        extra: component.extra ? component.extra.filter(Boolean).map(sanitizeComponent) : [],
+        color: valueOrUndefined(component.color),
+        bold: valueOrUndefined(component.bold),
+        italic: valueOrUndefined(component.italic),
+        underlined: valueOrUndefined(component.underlined),
+        strikethrough: valueOrUndefined(component.strikethrough),
+        obfuscation: valueOrUndefined(component.obfuscation),
+        text: valueOrUndefined(component.text)
+    };
+}
+
 export const ExtensionValueTableCell = ({data}) => {
     if (!data) return '-';
 
@@ -56,13 +76,20 @@ export const ExtensionValueTableCell = ({data}) => {
     } else if (data.type === 'LINK') {
         return (<Link to={data.value?.link}><ColoredText text={data.value?.text}/></Link>);
     } else if (data.type === 'COMPONENT') {
-        return (<MinecraftChat component={JSON.parse(data.value)}/>)
+        return (<MinecraftChat component={sanitizeComponent(JSON.parse(data.value))}/>)
+    } else if (data.type === 'TIME_MILLISECONDS') {
+        return <FormattedTime timeMs={data.value}/>;
+    } else if (data.type === 'DATE_YEAR') {
+        return <FormattedDate date={data.value}/>;
+    } else if (data.type === 'DATE_SECOND') {
+        return <FormattedDate date={data.value} includeSeconds/>;
     } else {
         return (<span title={title}>{data.value}</span>);
     }
 }
 
 const ExtensionValue = ({data}) => {
+    const {t} = useTranslation();
     const color = data.description.icon.colorClass;
     const colorClass = color?.startsWith("col-") ? color : "col-" + color;
     const icon = [data.description.icon.familyClass, data.description.icon.iconName];
@@ -85,8 +112,28 @@ const ExtensionValue = ({data}) => {
     } else if (data.type === 'COMPONENT') {
         return (<p title={title}>
             {icon && <Fa icon={icon} className={colorClass}/>} {name}
-            {<End><MinecraftChat component={JSON.parse(data.value)}/></End>}
+            <End><MinecraftChat component={sanitizeComponent(JSON.parse(data.value))}/></End>
         </p>)
+    } else if (data.type === 'BOOLEAN') {
+        return <p title={title}>
+            {icon && <Fa icon={icon} className={colorClass}/>} {name}
+            <End>{t(data.value ? 'plugin.generic.yes' : 'plugin.generic.no')}</End>
+        </p>;
+    } else if (data.type === 'TIME_MILLISECONDS') {
+        return <p title={title}>
+            {icon && <Fa icon={icon} className={colorClass}/>} {name}
+            <End><FormattedTime timeMs={data.value}/></End>
+        </p>;
+    } else if (data.type === 'DATE_YEAR') {
+        return <p title={title}>
+            {icon && <Fa icon={icon} className={colorClass}/>} {name}
+            <End><FormattedDate date={data.value}/></End>
+        </p>;
+    } else if (data.type === 'DATE_SECOND') {
+        return <p title={title}>
+            {icon && <Fa icon={icon} className={colorClass}/>} {name}
+            <End><FormattedDate date={data.value} includeSeconds/></End>
+        </p>;
     } else {
         return (<Datapoint name={name}
                            title={title}
@@ -143,8 +190,8 @@ const ExtensionCard = ({extension}) => {
         <ul className="nav nav-tabs tab-nav-right" role="tablist">
             {extension.onlyGenericTab ? '' :
                 extension.tabs.map((tab, i) => <li key={JSON.stringify(tab)} role="presentation"
-                                                   className="nav-item col-black">
-                    <button className={"nav-link col-black"
+                                                   className="nav-item col-text">
+                    <button className={"nav-link col-text"
                         + (openTabIndex === i ? ' active' : '')} onClick={() => toggleTabIndex(i)}>
                         <ExtensionIcon icon={tab.tabInformation.icon}/> {tab.tabInformation.tabName}
                     </button>

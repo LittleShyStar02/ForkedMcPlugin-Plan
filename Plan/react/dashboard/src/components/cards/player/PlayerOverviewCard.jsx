@@ -1,7 +1,7 @@
 import React, {useCallback} from 'react';
 import {useTranslation} from "react-i18next";
-import {useMetadata} from "../../../hooks/metadataHook";
-import {useNavigation} from "../../../hooks/navigationHook";
+import {useMetadata} from "../../../hooks/metadataHook.tsx";
+import {useNavigation} from "../../../hooks/navigationHook.tsx";
 import {Card, Col} from "react-bootstrap";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import {
@@ -11,8 +11,8 @@ import {
     faClock,
     faQuestionCircle
 } from "@fortawesome/free-regular-svg-icons";
-import ExtendableCardBody from "../../layout/extension/ExtendableCardBody";
-import ExtendableRow from "../../layout/extension/ExtendableRow";
+import ExtendableCardBody from "../../layout/extension/ExtendableCardBody.tsx";
+import ExtendableRow from "../../layout/extension/ExtendableRow.tsx";
 import {
     faCircle,
     faCrosshairs,
@@ -25,7 +25,11 @@ import {
     faUserPlus
 } from "@fortawesome/free-solid-svg-icons";
 import {faSuperpowers} from "@fortawesome/free-brands-svg-icons";
-import Datapoint from "../../Datapoint";
+import Datapoint from "../../datapoint/Datapoint.tsx";
+import FormattedTime from "../../text/FormattedTime.jsx";
+import FormattedDate from "../../text/FormattedDate.tsx";
+import {useDecimalFormatter} from "../../../util/format/useDecimalFormatter.js";
+import {usePingFormatter} from "../../../util/format/usePingFormatter.js";
 
 const PlayerHeadSection = ({player}) => {
     const {t} = useTranslation();
@@ -36,13 +40,13 @@ const PlayerHeadSection = ({player}) => {
         <>
             <Col xs={4}>
                 <p>
-                    <Fa icon={faCircle} className={player.info.online ? "col-green" : "col-red"}/>
+                    <Fa icon={faCircle} className={player.info.online ? "col-online" : "col-offline"}/>
                     {' ' + (player.info.online ? t('html.value.online') : t('html.value.offline'))}
                 </p>
                 {player.info.operator ?
-                    <p><Fa icon={faSuperpowers} className="col-blue"/> {t('html.label.operator')}</p> : ''}
+                    <p><Fa icon={faSuperpowers} className="col-operator"/> {t('html.label.operator')}</p> : ''}
                 <p><Fa icon={faGavel}
-                       className="col-brown"/> {t('html.label.timesKicked')}: {player.info.kick_count}</p>
+                       className="col-kicks"/> {t('html.label.timesKicked')}: {player.info.kick_count}</p>
             </Col>
             <Col xs={4}>
                 <img className="rounded mx-auto d-block"
@@ -51,10 +55,10 @@ const PlayerHeadSection = ({player}) => {
             </Col>
             <Col xs={4}>
                 <p><Fa icon={faCrosshairs}
-                       className="col-red"/> {t('html.label.playerKills')}: {player.info.player_kill_count}
+                       className="col-player-kills"/> {t('html.label.playerKills')}: {player.info.player_kill_count}
                 </p>
                 <p><Fa icon={faCrosshairs}
-                       className="col-green"/> {t('html.label.mobKills')}: {player.info.mob_kill_count}</p>
+                       className="col-mob-kills"/> {t('html.label.mobKills')}: {player.info.mob_kill_count}</p>
                 <p><Fa icon={faSkull}/> {t('html.label.deaths')}: {player.info.death_count}</p>
             </Col>
         </>
@@ -65,11 +69,13 @@ const PlayerOverviewCard = ({player}) => {
     const {t} = useTranslation();
     const {setHelpModalTopic} = useNavigation();
     const openHelp = useCallback(() => setHelpModalTopic('activity-index'), [setHelpModalTopic]);
+    const {formatDecimals} = useDecimalFormatter();
+    const {formatPing} = usePingFormatter();
 
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black">
+                <h6 className="col-text">
                     <Fa icon={faAddressBook}/> {player.info.name}
                 </h6>
             </Card.Header>
@@ -81,72 +87,77 @@ const PlayerOverviewCard = ({player}) => {
                 <ExtendableRow id={'row-player-overview-card-1'}>
                     <Col lg={6}>
                         <Datapoint
-                            icon={faClock} color="green"
-                            name={t('html.label.totalPlaytime')} value={player.info.playtime}
+                            icon={faClock} color="playtime"
+                            name={t('html.label.totalPlaytime')} value={<FormattedTime timeMs={player.info.playtime}/>}
                         />
                         <Datapoint
-                            icon={faClock} color="green"
-                            name={t('html.label.totalActive')} value={player.info.active_playtime}
+                            icon={faClock} color="playtime-active"
+                            name={t('html.label.totalActive')}
+                            value={<FormattedTime timeMs={player.info.active_playtime}/>}
                         />
                         <Datapoint
-                            icon={faClock} color="grey"
-                            name={t('html.label.totalAfk')} value={player.info.afk_time}
+                            icon={faClock} color="playtime-afk"
+                            name={t('html.label.totalAfk')} value={<FormattedTime timeMs={player.info.afk_time}/>}
                         />
                         <hr/>
                         <Datapoint
-                            icon={faCalendarCheck} color="teal"
+                            icon={faCalendarCheck} color="sessions"
                             name={t('html.label.sessions')} value={player.info.session_count} bold
                         />
                         <Datapoint
-                            icon={faClock} color="teal"
-                            name={t('html.label.longestSession')} value={player.info.longest_session_length}
+                            icon={faClock} color="sessions"
+                            name={t('html.label.longestSession')}
+                            value={<FormattedTime timeMs={player.info.longest_session_length}/>}
                         />
                         <Datapoint
-                            icon={faClock} color="teal"
-                            name={t('html.label.sessionMedian')} value={player.info.session_median}
+                            icon={faClock} color="sessions"
+                            name={t('html.label.sessionMedian')}
+                            value={<FormattedTime timeMs={player.info.session_median}/>}
                         />
                         <hr/>
                         <Datapoint
-                            icon={faUserPlus} color="light-green"
-                            name={t('html.label.registered')} value={player.info.registered} boldTitle
+                            icon={faUserPlus} color="first-seen"
+                            name={t('html.label.registered')} value={<FormattedDate date={player.info.registered}/>}
+                            boldTitle
                         />
                     </Col>
                     <Col lg={6}>
                         <Datapoint
-                            icon={faUser} color="amber"
+                            icon={faUser} color="players-activity-index"
                             name={<>{t('html.label.activityIndex')} <span>
-                                <button onClick={openHelp}><Fa className={"col-blue"}
+                                <button onClick={openHelp}><Fa className={"col-help-icon"}
                                                                icon={faQuestionCircle}/>
                                 </button></span></>}
-                            value={player.info.activity_index} bold
+                            value={formatDecimals(player.info.activity_index)} bold
                             valueLabel={player.info.activity_index_group}
                             title={t('html.label.activityIndex')}
                         />
                         <Datapoint
-                            icon={faServer} color="light-green"
+                            icon={faServer} color="servers"
                             name={t('html.label.favoriteServer')} value={player.info.favorite_server}
                         />
                         <Datapoint
-                            icon={faLocationArrow} color="amber"
+                            icon={faLocationArrow} color="join-addresses"
                             name={t('html.label.joinAddress')} value={player.info.latest_join_address}
                         />
                         <hr/>
                         <Datapoint
-                            icon={faSignal} color="amber"
-                            name={t('html.label.averagePing')} value={player.info.average_ping}
+                            icon={faSignal} color="ping"
+                            name={t('html.label.averagePing')} value={formatPing(player.info.average_ping)}
                         />
                         <Datapoint
-                            icon={faSignal} color="amber"
-                            name={t('html.label.bestPing')} value={player.info.best_ping}
+                            icon={faSignal} color="ping"
+                            name={t('html.label.bestPing')} value={formatPing(player.info.best_ping)}
                         />
                         <Datapoint
-                            icon={faSignal} color="amber"
-                            name={t('html.label.worstPing')} value={player.info.worst_ping}
+                            icon={faSignal} color="ping"
+                            name={t('html.label.worstPing')} value={formatPing(player.info.worst_ping)}
                         />
                         <hr/>
                         <Datapoint
-                            icon={faCalendar} color="teal"
-                            name={t('html.label.lastSeen')} value={player.info.last_seen} boldTitle
+                            icon={faCalendar} color="last-seen"
+                            name={t('html.label.lastSeen')} value={<FormattedDate date={player.info.last_seen}/>}
+                            boldTitle
                         />
                     </Col>
                 </ExtendableRow>

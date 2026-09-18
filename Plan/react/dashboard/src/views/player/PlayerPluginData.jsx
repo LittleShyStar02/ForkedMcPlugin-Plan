@@ -1,11 +1,11 @@
 import React, {useEffect} from "react";
 import ExtensionCard, {ExtensionCardWrapper} from "../../components/extensions/ExtensionCard";
 import {Card, Col, Row} from "react-bootstrap";
-import {useParams} from "react-router-dom";
+import {useParams} from "react-router";
 import Masonry from "masonry-layout";
 import {usePlayer} from "../layout/PlayerPage";
-import LoadIn from "../../components/animation/LoadIn";
-import {useAuth} from "../../hooks/authenticationHook";
+import LoadIn from "../../components/animation/LoadIn.tsx";
+import {useAuth} from "../../hooks/authenticationHook.tsx";
 
 const PlayerPluginData = () => {
     const {hasPermission} = useAuth();

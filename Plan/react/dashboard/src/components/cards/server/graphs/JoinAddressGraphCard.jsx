@@ -1,16 +1,17 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {useTranslation} from "react-i18next";
 import {fetchJoinAddressByDay} from "../../../../service/serverService";
-import {ErrorViewCard} from "../../../../views/ErrorView";
-import {ChartLoader} from "../../../navigation/Loader";
+import {ErrorViewCard} from "../../../../views/ErrorView.tsx";
+import {ChartLoader} from "../../../navigation/Loader.tsx";
 import {Card} from "react-bootstrap";
-import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
+import {FontAwesomeIcon, FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import {faChartColumn} from "@fortawesome/free-solid-svg-icons";
 import JoinAddressGraph from "../../../graphs/JoinAddressGraph";
 import Toggle from "../../../input/Toggle";
 import {useJoinAddressListContext} from "../../../../hooks/context/joinAddressListContextHook.jsx";
-import {useNavigation} from "../../../../hooks/navigationHook.jsx";
+import {useNavigation} from "../../../../hooks/navigationHook.tsx";
 import {staticSite} from "../../../../service/backendConfiguration.js";
+import {faHandPointDown} from "@fortawesome/free-regular-svg-icons";
 
 const JoinAddressGraphCard = ({identifier}) => {
     const {t} = useTranslation();
@@ -38,7 +39,10 @@ const JoinAddressGraphCard = ({identifier}) => {
             dataByGroup.push({...group, data: data?.join_addresses_by_date || []});
         }
 
-        if (!staticSite) {
+        if (staticSite) {
+            // On exported site we get all addresses individually
+            setData({join_addresses_by_date: dataByGroup[0].data, colors})
+        } else {
             // First group points from endpoint into frontend based groups
             const points = {};
             for (const group of dataByGroup) {
@@ -56,7 +60,7 @@ const JoinAddressGraphCard = ({identifier}) => {
                 .sort((a, b) => Number(b.date) - Number(a.date))
                 .map(([date, pointList]) => {
                     return {
-                        date: Number(date), joinAddresses: pointList.map(point => point.joinAddresses).flat()
+                        date: Number(date), joinAddresses: pointList.flatMap(point => point.joinAddresses)
                     }
                 });
 
@@ -64,9 +68,6 @@ const JoinAddressGraphCard = ({identifier}) => {
                 join_addresses_by_date: flattened,
                 colors
             });
-        } else {
-            // On exported site we get all addresses individually
-            setData({join_addresses_by_date: dataByGroup[0].data, colors})
         }
     }, [setData, setLoadingError, identifier, updateRequested, list]);
 
@@ -79,16 +80,18 @@ const JoinAddressGraphCard = ({identifier}) => {
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black" style={{width: '100%'}}>
-                    <Fa icon={faChartColumn} className="col-amber"/> {t('html.label.joinAddresses')}
+                <h6 className="col-text" style={{width: '100%'}}>
+                    <Fa icon={faChartColumn} className="col-join-addresses"/> {t('html.label.joinAddresses')}
                 </h6>
-                <Toggle value={stack} onValueChange={setStack} color={'amber'}>{t('html.label.stacked')}</Toggle>
+                <Toggle value={stack} onValueChange={setStack}
+                        color={'join-addresses'}>{t('html.label.stacked')}</Toggle>
             </Card.Header>
             {data &&
                 <JoinAddressGraph id={'join-address-graph'} data={data?.join_addresses_by_date} colors={data?.colors}
                                   stack={stack}/>}
             {!data && noSelectedAddresses &&
-                <div className="chart-area" style={{height: "450px"}}><p>Select some addresses</p></div>}
+                <div className="chart-area" style={{height: "450px"}}><p>{t('html.label.selectSomeAddresses')}
+                    <FontAwesomeIcon icon={faHandPointDown}/></p></div>}
             {!data && !noSelectedAddresses && <ChartLoader/>}
         </Card>
     )

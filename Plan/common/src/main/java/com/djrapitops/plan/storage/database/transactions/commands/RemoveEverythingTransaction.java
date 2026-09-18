@@ -16,6 +16,7 @@
  */
 package com.djrapitops.plan.storage.database.transactions.commands;
 
+import com.djrapitops.plan.extension.implementation.providers.gathering.ExtensionMetadataStorage;
 import com.djrapitops.plan.storage.database.sql.tables.*;
 import com.djrapitops.plan.storage.database.sql.tables.extension.*;
 import com.djrapitops.plan.storage.database.sql.tables.webuser.*;
@@ -36,7 +37,6 @@ public class RemoveEverythingTransaction extends Patch {
 
     @Override
     protected void applyPatch() {
-        clearTable(SettingsTable.TABLE_NAME);
         clearTable(GeoInfoTable.TABLE_NAME);
         clearTable(NicknamesTable.TABLE_NAME);
         clearTable(KillsTable.TABLE_NAME);
@@ -44,6 +44,7 @@ public class RemoveEverythingTransaction extends Patch {
         clearTable(SessionsTable.TABLE_NAME);
         clearTable(JoinAddressTable.TABLE_NAME);
         clearTable(AllowlistBounceTable.TABLE_NAME);
+        clearTable(PluginVersionTable.TABLE_NAME);
         clearTable(WorldTable.TABLE_NAME);
         clearTable(PingTable.TABLE_NAME);
         clearTable(UserInfoTable.TABLE_NAME);
@@ -56,6 +57,8 @@ public class RemoveEverythingTransaction extends Patch {
         clearTable(SecurityTable.TABLE_NAME);
         clearTable(ServerTable.TABLE_NAME);
         clearTable(CookieTable.TABLE_NAME);
+        clearTable(StatisticValueTable.TABLE_NAME);
+        clearTable(StatisticTable.TABLE_NAME);
         clearTable(ExtensionPlayerValueTable.TABLE_NAME);
         clearTable(ExtensionServerValueTable.TABLE_NAME);
         clearTable(ExtensionGroupsTable.TABLE_NAME);
@@ -67,7 +70,13 @@ public class RemoveEverythingTransaction extends Patch {
         clearTable(ExtensionPluginTable.TABLE_NAME);
         clearTable(ExtensionIconTable.TABLE_NAME);
 
+        execute("DROP TABLE IF EXISTS plan_world_times_batch");
+        execute("DROP TABLE IF EXISTS plan_kills_batch");
+        execute(SessionsTable.TemporaryIdLookupTable.DROP_TABLE_STATEMENT);
+
         executeOther(new StoreJoinAddressTransaction(JoinAddressTable.DEFAULT_VALUE_FOR_LOOKUP));
+
+        ExtensionMetadataStorage.invalidateAll();
     }
 
     private void clearTable(String tableName) {

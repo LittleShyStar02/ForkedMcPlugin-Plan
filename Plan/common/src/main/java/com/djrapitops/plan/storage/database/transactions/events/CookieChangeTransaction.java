@@ -20,9 +20,13 @@ import com.djrapitops.plan.storage.database.sql.tables.CookieTable;
 import com.djrapitops.plan.storage.database.transactions.ExecStatement;
 import com.djrapitops.plan.storage.database.transactions.Transaction;
 import com.djrapitops.plan.utilities.dev.Untrusted;
+import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+
+import static com.djrapitops.plan.storage.database.sql.tables.CookieTable.MAX_IP_ADDRESS_LENGTH;
 
 public class CookieChangeTransaction extends Transaction {
 
@@ -30,27 +34,30 @@ public class CookieChangeTransaction extends Transaction {
     @Untrusted
     private final String cookie; // Null if removing
     private final Long expires;
+    @Nullable
+    private final String ipAddress;
 
-    private CookieChangeTransaction(String username, @Untrusted String cookie, Long expires) {
+    private CookieChangeTransaction(String username, @Untrusted String cookie, Long expires, @Nullable String ipAddress) {
         this.username = username;
         this.cookie = cookie;
         this.expires = expires;
+        this.ipAddress = StringUtils.truncate(ipAddress, 45);
     }
 
-    public static CookieChangeTransaction storeCookie(String username, String cookie, long expires) {
-        return new CookieChangeTransaction(username, cookie, expires);
+    public static CookieChangeTransaction storeCookie(String username, String cookie, long expires, String ipAddress) {
+        return new CookieChangeTransaction(username, cookie, expires, ipAddress);
     }
 
     public static CookieChangeTransaction removeCookieByUser(String username) {
-        return new CookieChangeTransaction(username, null, null);
+        return new CookieChangeTransaction(username, null, null, null);
     }
 
     public static CookieChangeTransaction removeCookie(@Untrusted String cookie) {
-        return new CookieChangeTransaction(null, cookie, null);
+        return new CookieChangeTransaction(null, cookie, null, null);
     }
 
     public static CookieChangeTransaction removeAll() {
-        return new CookieChangeTransaction(null, null, null);
+        return new CookieChangeTransaction(null, null, null, null);
     }
 
     @Override
@@ -97,6 +104,7 @@ public class CookieChangeTransaction extends Transaction {
                     statement.setString(1, username);
                     statement.setString(2, cookie);
                     statement.setLong(3, expires);
+                    statement.setString(4, StringUtils.truncate(ipAddress, MAX_IP_ADDRESS_LENGTH));
                 }
             });
         }

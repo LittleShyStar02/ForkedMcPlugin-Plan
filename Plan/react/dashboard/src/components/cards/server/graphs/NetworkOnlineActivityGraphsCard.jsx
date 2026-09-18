@@ -10,18 +10,21 @@ import {
     fetchNetworkCalendarGraph,
     fetchPlayersOnlineGraph
 } from "../../../../service/serverService";
-import {ErrorViewBody} from "../../../../views/ErrorView";
-import {ChartLoader} from "../../../navigation/Loader";
+import {ErrorViewBody} from "../../../../views/ErrorView.tsx";
+import {ChartLoader} from "../../../navigation/Loader.tsx";
 import TimeByTimeGraph from "../../../graphs/TimeByTimeGraph";
 import PlayersOnlineGraph from "../../../graphs/PlayersOnlineGraph";
-import {useMetadata} from "../../../../hooks/metadataHook";
+import {useMetadata} from "../../../../hooks/metadataHook.tsx";
 import StackedPlayersOnlineGraph from "../../../graphs/StackedPlayersOnlineGraph";
-import {useAuth} from "../../../../hooks/authenticationHook";
+import {useAuth} from "../../../../hooks/authenticationHook.tsx";
 import {faCalendar} from "@fortawesome/free-regular-svg-icons";
 import ServerCalendar from "../../../calendar/ServerCalendar";
 import {postQuery} from "../../../../service/queryService";
 import Highcharts from "highcharts/highstock";
+import "highcharts/modules/no-data-to-display"
+import "highcharts/modules/accessibility";
 import QueryPlayerListModal from "../../../modal/QueryPlayerListModal";
+import {staticSite} from "../../../../service/backendConfiguration.js";
 
 const SingleProxyPlayersOnlineGraph = ({serverUUID}) => {
     const {data, loadingError} = useDataRequest(fetchPlayersOnlineGraph, [serverUUID]);
@@ -29,7 +32,7 @@ const SingleProxyPlayersOnlineGraph = ({serverUUID}) => {
     if (loadingError) return <ErrorViewBody error={loadingError}/>
     if (!serverUUID || !data) return <ChartLoader/>;
 
-    return <PlayersOnlineGraph data={data}/>
+    return <PlayersOnlineGraph data={data} showPlayersOnline/>
 }
 
 const MultiProxyPlayersOnlineGraph = () => {
@@ -38,7 +41,7 @@ const MultiProxyPlayersOnlineGraph = () => {
     if (loadingError) return <ErrorViewBody error={loadingError}/>
     if (!data) return <ChartLoader/>;
 
-    return <StackedPlayersOnlineGraph data={data}/>
+    return <StackedPlayersOnlineGraph data={data} showPlayersOnline/>
 }
 
 const PlayersOnlineTab = () => {
@@ -111,7 +114,7 @@ const NetworkCalendarTab = () => {
 
     return <>
         <ServerCalendar series={data.data} firstDay={data.firstDay} onSelect={onSelect}/>
-        <QueryPlayerListModal open={modalOpen} toggle={closeModal} queryData={queryData}/>
+        {!staticSite && <QueryPlayerListModal open={modalOpen} toggle={closeModal} queryData={queryData}/>}
     </>
 }
 
@@ -120,19 +123,22 @@ const NetworkOnlineActivityGraphsCard = () => {
     const {t} = useTranslation();
     const tabs = [
         {
-            name: t('html.label.networkOnlineActivity'), icon: faChartArea, color: 'blue', href: 'online-activity',
+            name: t('html.label.networkOnlineActivity'),
+            icon: faChartArea,
+            color: 'players-online',
+            href: 'online-activity',
             element: <PlayersOnlineTab/>,
             permission: 'page.network.overview.graphs.online'
         }, {
-            name: t('html.label.dayByDay'), icon: faChartArea, color: 'blue', href: 'day-by-day',
+            name: t('html.label.dayByDay'), icon: faChartArea, color: 'players-unique', href: 'day-by-day',
             element: <DayByDayTab/>,
             permission: 'page.network.overview.graphs.day.by.day'
         }, {
-            name: t('html.label.hourByHour'), icon: faChartArea, color: 'blue', href: 'hour-by-hour',
+            name: t('html.label.hourByHour'), icon: faChartArea, color: 'players-unique', href: 'hour-by-hour',
             element: <HourByHourTab/>,
             permission: 'page.network.overview.graphs.hour.by.hour'
         }, {
-            name: t('html.label.networkCalendar'), icon: faCalendar, color: 'teal', href: 'network-calendar',
+            name: t('html.label.networkCalendar'), icon: faCalendar, color: 'sessions', href: 'network-calendar',
             element: <NetworkCalendarTab/>,
             permission: 'page.network.overview.graphs.calendar'
         }

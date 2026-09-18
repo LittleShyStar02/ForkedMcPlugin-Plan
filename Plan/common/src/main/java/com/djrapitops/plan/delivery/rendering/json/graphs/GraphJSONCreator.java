@@ -44,10 +44,8 @@ import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.DataGatheringSettings;
 import com.djrapitops.plan.settings.config.paths.DisplaySettings;
 import com.djrapitops.plan.settings.config.paths.TimeSettings;
-import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.GenericLang;
 import com.djrapitops.plan.settings.theme.Theme;
-import com.djrapitops.plan.settings.theme.ThemeVal;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.analysis.ActivityIndexQueries;
@@ -65,6 +63,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -76,7 +75,6 @@ import java.util.stream.Collectors;
 public class GraphJSONCreator {
 
     private final PlanConfig config;
-    private final Locale locale;
     private final Theme theme;
     private final DBSystem dbSystem;
     private final Graphs graphs;
@@ -84,16 +82,44 @@ public class GraphJSONCreator {
     @Inject
     public GraphJSONCreator(
             PlanConfig config,
-            Locale locale,
             Theme theme,
             DBSystem dbSystem,
             Graphs graphs
     ) {
         this.config = config;
-        this.locale = locale;
         this.theme = theme;
         this.dbSystem = dbSystem;
         this.graphs = graphs;
+    }
+
+    private static void removeFilteredAddresses(List<JoinAddressCount> addresses, List<Pattern> filteredJoinAddresses) {
+        if (filteredJoinAddresses.isEmpty() || filteredJoinAddresses.equals(List.of(Pattern.compile("play\\.example\\.com")))) {
+            return;
+        }
+
+        List<JoinAddressCount> addressesToRemove = addresses.stream()
+                .filter(address ->
+                        filteredJoinAddresses.stream().anyMatch(p -> p.matcher(address.getJoinAddress()).matches())
+                )
+                .collect(Collectors.toList());
+
+        if (!addressesToRemove.isEmpty()) {
+            Optional<JoinAddressCount> foundUnknownAddressCount = addresses.stream()
+                    .filter(address -> address.getJoinAddress().equals(JoinAddressTable.DEFAULT_VALUE_FOR_LOOKUP))
+                    .findFirst();
+            JoinAddressCount unknownAddressCount;
+            if (foundUnknownAddressCount.isEmpty()) {
+                unknownAddressCount = new JoinAddressCount(JoinAddressTable.DEFAULT_VALUE_FOR_LOOKUP, 0);
+                addresses.add(unknownAddressCount);
+            } else {
+                unknownAddressCount = foundUnknownAddressCount.get();
+            }
+
+            for (JoinAddressCount toRemove : addressesToRemove) {
+                unknownAddressCount.setCount(unknownAddressCount.getCount() + toRemove.getCount());
+                addresses.remove(toRemove);
+            }
+        }
     }
 
     public String performanceGraphJSON(ServerUUID serverUUID) {
@@ -111,14 +137,14 @@ public class GraphJSONCreator {
                 ",\"chunks\":" + lineGraphs.chunkGraph(tpsMutator).toHighChartsSeries() +
                 ",\"disk\":" + lineGraphs.diskGraph(tpsMutator).toHighChartsSeries() +
                 ",\"colors\":{" +
-                "\"playersOnline\":\"" + theme.getValue(ThemeVal.GRAPH_PLAYERS_ONLINE) + "\"," +
-                "\"cpu\":\"" + theme.getValue(ThemeVal.GRAPH_CPU) + "\"," +
-                "\"ram\":\"" + theme.getValue(ThemeVal.GRAPH_RAM) + "\"," +
-                "\"entities\":\"" + theme.getValue(ThemeVal.GRAPH_ENTITIES) + "\"," +
-                "\"chunks\":\"" + theme.getValue(ThemeVal.GRAPH_CHUNKS) + "\"," +
-                "\"low\":\"" + theme.getValue(ThemeVal.GRAPH_TPS_LOW) + "\"," +
-                "\"med\":\"" + theme.getValue(ThemeVal.GRAPH_TPS_MED) + "\"," +
-                "\"high\":\"" + theme.getValue(ThemeVal.GRAPH_TPS_HIGH) + "\"}" +
+                "\"playersOnline\":\"#1E90FF\"," +
+                "\"cpu\":\"#e0d264\"," +
+                "\"ram\":\"#7dcc24\"," +
+                "\"entities\":\"#ac69ef\"," +
+                "\"chunks\":\"#b58310\"," +
+                "\"low\":\"#b74343\"," +
+                "\"med\":\"#e5cc12\"," +
+                "\"high\":\"#267F00\"}" +
                 ",\"zones\":{" +
                 "\"tpsThresholdMed\":" + config.get(DisplaySettings.GRAPH_TPS_THRESHOLD_MED) + ',' +
                 "\"tpsThresholdHigh\":" + config.get(DisplaySettings.GRAPH_TPS_THRESHOLD_HIGH) + ',' +
@@ -166,17 +192,17 @@ public class GraphJSONCreator {
         )));
 
         return Maps.builder(String.class, Object.class)
-                .put("keys", new String[]{"date", "playersOnline", "tps", "cpu", "ram", "entities", "chunks", "disk"})
+                .put("keys", new String[]{"date", "playersOnline", "tps", "cpu", "ram", "entities", "chunks", "disk", "msptAverage", "mspt95thPercentile", "msptJitterAverage", "msptJitterMax"})
                 .put("values", values)
                 .put("colors", Maps.builder(String.class, Object.class)
-                        .put("playersOnline", theme.getValue(ThemeVal.GRAPH_PLAYERS_ONLINE))
-                        .put("cpu", theme.getValue(ThemeVal.GRAPH_CPU))
-                        .put("ram", theme.getValue(ThemeVal.GRAPH_RAM))
-                        .put("entities", theme.getValue(ThemeVal.GRAPH_ENTITIES))
-                        .put("chunks", theme.getValue(ThemeVal.GRAPH_CHUNKS))
-                        .put("low", theme.getValue(ThemeVal.GRAPH_TPS_LOW))
-                        .put("med", theme.getValue(ThemeVal.GRAPH_TPS_MED))
-                        .put("high", theme.getValue(ThemeVal.GRAPH_TPS_HIGH))
+                        .put("playersOnline", "#1E90FF")
+                        .put("cpu", "#e0d264")
+                        .put("ram", "#7dcc24")
+                        .put("entities", "#ac69ef")
+                        .put("chunks", "#b58310")
+                        .put("low", "#b74343")
+                        .put("med", "#e5cc12")
+                        .put("high", "#267F00")
                         .build())
                 .put("zones", Maps.builder(String.class, Object.class)
                         .put("tpsThresholdMed", config.get(DisplaySettings.GRAPH_TPS_THRESHOLD_MED))
@@ -199,7 +225,7 @@ public class GraphJSONCreator {
                 Point::fromDateObj
         );
         return "{\"playersOnline\":" + graphs.line().lineGraph(points).toHighChartsSeries() +
-                ",\"color\":\"" + theme.getValue(ThemeVal.GRAPH_PLAYERS_ONLINE) + "\"}";
+                ",\"color\":\"#1E90FF\"}";
     }
 
     public String uniqueAndNewGraphJSON(ServerUUID serverUUID) {
@@ -228,7 +254,7 @@ public class GraphJSONCreator {
                 PlayerCountQueries.hourlyUniquePlayerCounts(weekAgo, now, timeZoneOffset, serverUUID)
         );
         NavigableMap<Long, Integer> newPerDay = db.query(
-                PlayerCountQueries.newPlayerCounts(weekAgo, now, timeZoneOffset, serverUUID)
+                PlayerCountQueries.hourlyNewPlayerCounts(weekAgo, now, timeZoneOffset, serverUUID)
         );
 
         return createUniqueAndNewJSON(lineGraphs, uniquePerDay, newPerDay, TimeUnit.HOURS.toMillis(1L));
@@ -245,8 +271,8 @@ public class GraphJSONCreator {
                         MutatorFunctions.addMissing(newPerDay, gapFillPeriod, 0)
                 ), gapStrategy).toHighChartsSeries() +
                 ",\"colors\":{" +
-                "\"playersOnline\":\"" + theme.getValue(ThemeVal.GRAPH_PLAYERS_ONLINE) + "\"," +
-                "\"newPlayers\":\"" + theme.getValue(ThemeVal.LIGHT_GREEN) + "\"" +
+                "\"playersOnline\":\"#1E90FF\"," +
+                "\"newPlayers\":\"#8BC34A\"" +
                 "}}";
     }
 
@@ -401,9 +427,9 @@ public class GraphJSONCreator {
                 .put("geolocation_series", worldMap.getEntries())
                 .put("geolocation_bar_series", geolocationBarGraph.getBars())
                 .put("colors", Maps.builder(String.class, String.class)
-                        .put("low", theme.getValue(ThemeVal.WORLD_MAP_LOW))
-                        .put("high", theme.getValue(ThemeVal.WORLD_MAP_HIGH))
-                        .put("bars", theme.getValue(ThemeVal.GREEN))
+                        .put("low", "#EEFFEE")
+                        .put("high", "#267f00")
+                        .put("bars", "#4CAF50")
                         .build())
                 .build();
     }
@@ -426,9 +452,9 @@ public class GraphJSONCreator {
                 ",\"avg_ping_series\":" + pingGraph.getAvgGraph().toHighChartsSeries() +
                 ",\"max_ping_series\":" + pingGraph.getMaxGraph().toHighChartsSeries() +
                 ",\"colors\":{" +
-                "\"min\":\"" + theme.getValue(ThemeVal.GRAPH_MIN_PING) + "\"," +
-                "\"avg\":\"" + theme.getValue(ThemeVal.GRAPH_AVG_PING) + "\"," +
-                "\"max\":\"" + theme.getValue(ThemeVal.GRAPH_MAX_PING) + "\"" +
+                "\"min\":\"#ffd54f\"," +
+                "\"avg\":\"#ffc107\"," +
+                "\"max\":\"#ffa000\"" +
                 "}}";
     }
 
@@ -440,14 +466,14 @@ public class GraphJSONCreator {
         );
         return Maps.builder(String.class, Object.class)
                 .put("punchCard", graphs.special().punchCard(sessions).getDots())
-                .put("color", theme.getValue(ThemeVal.GRAPH_PUNCHCARD))
+                .put("color", "#222")
                 .build();
     }
 
     public Map<String, Object> serverPreferencePieJSONAsMap() {
         long now = System.currentTimeMillis();
         long monthAgo = now - TimeUnit.DAYS.toMillis(30L);
-        String[] pieColors = theme.getPieColors(ThemeVal.GRAPH_WORLD_PIE);
+        String[] pieColors = theme.getWorldPieColors();
         Map<String, Long> playtimePerServer = dbSystem.getDatabase().query(SessionQueries.playtimePerServer(monthAgo, now));
 
         return Maps.builder(String.class, Object.class)
@@ -465,43 +491,17 @@ public class GraphJSONCreator {
     }
 
     public Map<String, Object> joinAddressesByDay(ServerUUID serverUUID, long after, long before, @Untrusted List<String> addressFilter) {
-        String[] pieColors = theme.getPieColors(ThemeVal.GRAPH_WORLD_PIE);
+        String[] pieColors = theme.getWorldPieColors();
         List<DateObj<Map<String, Integer>>> joinAddresses = dbSystem.getDatabase().query(JoinAddressQueries.joinAddressesPerDay(serverUUID, config.getTimeZone().getOffset(System.currentTimeMillis()), after, before, addressFilter));
 
         return mapToJson(pieColors, joinAddresses);
     }
 
     public Map<String, Object> joinAddressesByDay(long after, long before, @Untrusted List<String> addressFilter) {
-        String[] pieColors = theme.getPieColors(ThemeVal.GRAPH_WORLD_PIE);
+        String[] pieColors = theme.getWorldPieColors();
         List<DateObj<Map<String, Integer>>> joinAddresses = dbSystem.getDatabase().query(JoinAddressQueries.joinAddressesPerDay(config.getTimeZone().getOffset(System.currentTimeMillis()), after, before, addressFilter));
 
         return mapToJson(pieColors, joinAddresses);
-    }
-
-    private static void removeFilteredAddresses(List<JoinAddressCount> addresses, List<String> filteredJoinAddresses) {
-        if (filteredJoinAddresses.isEmpty() || filteredJoinAddresses.equals(List.of("play.example.com"))) return;
-
-        List<JoinAddressCount> addressesToRemove = addresses.stream()
-                .filter(address -> filteredJoinAddresses.contains(address.getJoinAddress()))
-                .collect(Collectors.toList());
-
-        if (!addressesToRemove.isEmpty()) {
-            Optional<JoinAddressCount> foundUnknownAddressCount = addresses.stream()
-                    .filter(address -> address.getJoinAddress().equals(JoinAddressTable.DEFAULT_VALUE_FOR_LOOKUP))
-                    .findFirst();
-            JoinAddressCount unknownAddressCount;
-            if (foundUnknownAddressCount.isEmpty()) {
-                unknownAddressCount = new JoinAddressCount(JoinAddressTable.DEFAULT_VALUE_FOR_LOOKUP, 0);
-                addresses.add(unknownAddressCount);
-            } else {
-                unknownAddressCount = foundUnknownAddressCount.get();
-            }
-
-            for (JoinAddressCount toRemove : addressesToRemove) {
-                unknownAddressCount.setCount(unknownAddressCount.getCount() + toRemove.getCount());
-                addresses.remove(toRemove);
-            }
-        }
     }
 
     private Map<String, Object> mapToJson(String[] pieColors, List<DateObj<Map<String, Integer>>> joinAddresses) {
@@ -509,7 +509,7 @@ public class GraphJSONCreator {
             translateUnknown(addressesByDate.getValue());
         }
 
-        List<String> filteredJoinAddresses = config.get(DataGatheringSettings.FILTER_JOIN_ADDRESSES);
+        List<Pattern> filteredJoinAddresses = Lists.map(config.get(DataGatheringSettings.FILTER_JOIN_ADDRESSES), Pattern::compile);
 
         List<JoinAddressCounts> joinAddressCounts = joinAddresses.stream()
                 .map(addressesOnDay -> {
@@ -547,6 +547,6 @@ public class GraphJSONCreator {
             proxyGraphs.add(new ServerSpecificLineGraph(points, ServerDto.fromServer(proxy)));
         }
 
-        return new GraphCollection<>(proxyGraphs, theme.getValue(ThemeVal.GRAPH_PLAYERS_ONLINE));
+        return new GraphCollection<>(proxyGraphs, "#1E90FF");
     }
 }

@@ -24,17 +24,21 @@ import com.djrapitops.plan.delivery.export.Exporter;
 import com.djrapitops.plan.delivery.formatting.Formatters;
 import com.djrapitops.plan.delivery.rendering.json.graphs.Graphs;
 import com.djrapitops.plan.delivery.webserver.Addresses;
+import com.djrapitops.plan.delivery.webserver.auth.RegistrationBin;
 import com.djrapitops.plan.delivery.webserver.http.WebServer;
 import com.djrapitops.plan.gathering.ServerSensor;
 import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.ConfigSystem;
 import com.djrapitops.plan.settings.config.PlanConfig;
+import com.djrapitops.plan.settings.config.paths.DisplaySettings;
 import com.djrapitops.plan.settings.config.paths.WebserverSettings;
 import com.djrapitops.plan.settings.locale.LocaleSystem;
+import com.djrapitops.plan.settings.theme.Theme;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.file.PlanFiles;
 import com.djrapitops.plan.storage.file.PublicHtmlFiles;
 import com.djrapitops.plan.utilities.java.Maps;
+import net.playeranalytics.plugin.server.PluginLogger;
 import org.junit.jupiter.api.extension.*;
 import utilities.RandomData;
 import utilities.dagger.PlanPluginComponent;
@@ -55,11 +59,10 @@ import java.util.function.Supplier;
 public class FullSystemExtension implements ParameterResolver, BeforeAllCallback, AfterAllCallback {
 
     private static final int TEST_PORT_NUMBER = RandomData.randomInt(9005, 9500);
+    private final Map<Class, Supplier> parameterResolvers;
     public PluginMockComponent component;
     private Path tempDir;
     private PlanSystem planSystem;
-
-    private final Map<Class, Supplier> parameterResolvers;
 
     public FullSystemExtension() {
         // You can't use method references here because planSystem is null when this method is initialized.
@@ -68,22 +71,12 @@ public class FullSystemExtension implements ParameterResolver, BeforeAllCallback
                 .put(PlanSystem.class, () -> planSystem)
                 .put(PlanFiles.class, () -> planSystem.getPlanFiles())
                 .put(PlanConfig.class, () -> planSystem.getConfigSystem().getConfig())
+                .put(Theme.class, () -> planSystem.getConfigSystem().getTheme())
                 .put(ConfigSystem.class, () -> planSystem.getConfigSystem())
                 .put(ServerUUID.class, () -> planSystem.getServerInfo().getServerUUID())
-                .put(PlanPluginComponent.class, () -> {
-                    try {
-                        return component.getComponent();
-                    } catch (Exception e) {
-                        throw new ParameterResolutionException("Error getting " + PlanPluginComponent.class, e);
-                    }
-                })
-                .put(PlanCommand.class, () -> {
-                    try {
-                        return component.getComponent().planCommand();
-                    } catch (Exception e) {
-                        throw new ParameterResolutionException("Error getting " + PlanCommand.class, e);
-                    }
-                })
+                .put(PlanPluginComponent.class, () -> component.getComponent())
+                .put(PluginLogger.class, () -> component.getAbstractionLayer().getPluginLogger())
+                .put(PlanCommand.class, () -> component.getComponent().planCommand())
                 .put(Database.class, () -> planSystem.getDatabaseSystem().getDatabase())
                 .put(DeliveryUtilities.class, () -> planSystem.getDeliveryUtilities())
                 .put(Formatters.class, () -> planSystem.getDeliveryUtilities().getFormatters())
@@ -95,20 +88,22 @@ public class FullSystemExtension implements ParameterResolver, BeforeAllCallback
                 .put(Graphs.class, () -> planSystem.getDeliveryUtilities().getGraphs())
                 .put(TaskSystem.class, () -> planSystem.getTaskSystem())
                 .put(ServerSensor.class, () -> planSystem.getGatheringUtilities().getServerSensor())
+                .put(RegistrationBin.class, () -> planSystem.getWebServerSystem().getRegistrationBin())
                 .build();
     }
 
     @Override
-    public void beforeAll(ExtensionContext context) throws Exception {
+    public void beforeAll(ExtensionContext context) throws IOException {
         tempDir = Files.createTempDirectory("plan-fullsystem-test");
         component = new PluginMockComponent(tempDir);
         planSystem = component.getPlanSystem();
         planSystem.getConfigSystem().getConfig()
-                .set(WebserverSettings.PORT, TEST_PORT_NUMBER);
+                .set(WebserverSettings.PORT, TEST_PORT_NUMBER)
+                .set(DisplaySettings.PLAYER_HEAD_IMG_URL, "data:image/png;base64,AA==");
     }
 
     @Override
-    public void afterAll(ExtensionContext context) throws Exception {
+    public void afterAll(ExtensionContext context) throws IOException {
         if (tempDir != null) deleteDirectory(tempDir);
     }
 

@@ -32,6 +32,7 @@ public class CookieAuthentication implements Authentication {
 
     @Override
     public User getUser() {
-        return activeCookieStore.checkCookie(cookie).orElse(null);
+        return activeCookieStore.findCookie(cookie)
+                .map(CookieMetadata::getUser).orElse(null);
     }
 }

@@ -1,13 +1,16 @@
 import {Modal} from "react-bootstrap";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import React, {useCallback} from "react";
-import {useNavigation} from "../../hooks/navigationHook";
+import {useNavigation} from "../../hooks/navigationHook.tsx";
 import {useTranslation} from "react-i18next";
 import ActivityIndexHelp from "./help/ActivityIndexHelp";
 import {faQuestionCircle} from "@fortawesome/free-regular-svg-icons";
 import NewPlayerRetentionHelp from "./help/NewPlayerRetentionHelp";
 import PlayerRetentionGraphHelp from "./help/PlayerRetentionGraphHelp";
 import GroupPermissionHelp from "./help/GroupPermissionHelp";
+import ActionButton from "../input/button/ActionButton.tsx";
+import ModalCloseButton from "../input/button/ModalCloseButton.jsx";
+import {PerformanceHelp} from "./help/PerformanceHelp.tsx";
 
 const HelpModal = () => {
     const {t} = useTranslation();
@@ -30,6 +33,10 @@ const HelpModal = () => {
         "group-permissions": {
             title: t('html.label.managePage.groupHeader'),
             body: <GroupPermissionHelp/>
+        },
+        "performance": {
+            title: t('html.label.performance'),
+            body: <PerformanceHelp/>
         }
     }
 
@@ -41,13 +48,13 @@ const HelpModal = () => {
                 <Modal.Title id="versionModalLabel">
                     <Fa icon={faQuestionCircle}/> {helpTopic?.title}
                 </Modal.Title>
-                <button aria-label="Close" className="btn-close" type="button" onClick={toggle}/>
+                <ModalCloseButton onClick={toggle}/>
             </Modal.Header>
             <Modal.Body>
                 {helpTopic?.body}
             </Modal.Body>
             <Modal.Footer>
-                <button className="btn bg-theme" onClick={toggle}>OK</button>
+                <ActionButton onClick={toggle}>OK</ActionButton>
             </Modal.Footer>
         </Modal>
     );

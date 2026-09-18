@@ -16,6 +16,7 @@
  */
 package com.djrapitops.plan.delivery.rendering.json;
 
+import com.djrapitops.plan.delivery.domain.ServerMinecraftStatistics;
 import com.djrapitops.plan.delivery.domain.auth.WebPermission;
 import com.djrapitops.plan.delivery.domain.container.PlayerContainer;
 import com.djrapitops.plan.delivery.domain.datatransfer.extension.ExtensionsDto;
@@ -36,15 +37,14 @@ import com.djrapitops.plan.gathering.domain.event.JoinAddress;
 import com.djrapitops.plan.identification.Server;
 import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.config.PlanConfig;
-import com.djrapitops.plan.settings.config.paths.DisplaySettings;
 import com.djrapitops.plan.settings.config.paths.TimeSettings;
 import com.djrapitops.plan.settings.locale.lang.GenericLang;
 import com.djrapitops.plan.settings.theme.Theme;
-import com.djrapitops.plan.settings.theme.ThemeVal;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.containers.PlayerContainerQuery;
 import com.djrapitops.plan.storage.database.queries.objects.ServerQueries;
+import com.djrapitops.plan.storage.database.queries.objects.StatisticsQueries;
 import com.djrapitops.plan.utilities.comparators.DateHolderRecentComparator;
 import com.djrapitops.plan.utilities.java.Lists;
 import com.djrapitops.plan.utilities.java.Maps;
@@ -64,7 +64,6 @@ public class PlayerJSONCreator {
     private final Graphs graphs;
     private final Formatters formatters;
 
-    private final Formatter<Long> timeAmount;
     private final Formatter<Double> decimals;
     private final Formatter<Long> year;
 
@@ -81,7 +80,6 @@ public class PlayerJSONCreator {
         this.dbSystem = dbSystem;
 
         this.formatters = formatters;
-        timeAmount = formatters.timeAmount();
         decimals = formatters.decimals();
         year = formatters.yearLong();
         this.graphs = graphs;
@@ -106,10 +104,10 @@ public class PlayerJSONCreator {
             data.put("info", createInfoJSONMap(player, serverNames));
             data.put("online_activity", createOnlineActivityJSONMap(sessionsMutator));
             data.put("nicknames", player.getValue(PlayerKeys.NICKNAMES)
-                    .map(nicks -> Nickname.fromDataNicknames(nicks, serverNames, year))
+                    .map(nicks -> Nickname.fromDataNicknames(nicks, serverNames))
                     .orElse(Collections.emptyList()));
             data.put("connections", player.getValue(PlayerKeys.GEO_INFO)
-                    .map(geoInfo -> ConnectionInfo.fromGeoInfo(geoInfo, year))
+                    .map(ConnectionInfo::fromGeoInfo)
                     .orElse(Collections.emptyList()));
             data.put("punchcard_series", graphs.special().punchCard(sessionsMutator).getDots());
         } else {
@@ -117,7 +115,7 @@ public class PlayerJSONCreator {
         }
         if (hasPermission.test(WebPermission.PAGE_PLAYER_SESSIONS)) {
             data.put("sessions", sessionsMutator.sort(new DateHolderRecentComparator()).toServerNameJSONMaps(graphs, config.getWorldAliasSettings(), formatters));
-            data.put("sessions_per_page", config.get(DisplaySettings.SESSIONS_PER_PAGE));
+            data.put("sessions_per_page", 10000);
             WorldPie worldPie = graphs.pie().worldPie(player.getValue(PlayerKeys.WORLD_TIMES).orElse(new WorldTimes()));
             data.put("world_pie_series", worldPie.getSlices());
             data.put("gm_series", worldPie.toHighChartsDrillDownMaps());
@@ -133,14 +131,19 @@ public class PlayerJSONCreator {
             data.put("player_deaths", new PlayerKillMutator(deaths).toJSONAsMap(formatters));
         }
         if (hasPermission.test(WebPermission.PAGE_PLAYER_SERVERS)) {
-            List<Map<String, Object>> serverAccordion = new ServerAccordion(player, serverNames, graphs, year, timeAmount, GenericLang.UNKNOWN.getKey()).asMaps();
+            List<Map<String, Object>> serverAccordion = new ServerAccordion(player, serverNames, graphs, GenericLang.UNKNOWN.getKey()).asMaps();
             Map<ServerUUID, WorldTimes> worldTimesPerServer = PerServerMutator.forContainer(player).worldTimesPerServer();
-            String[] pieColors = theme.getPieColors(ThemeVal.GRAPH_WORLD_PIE);
+            String[] pieColors = theme.getWorldPieColors();
 
             data.put("ping_graph", createPingGraphJson(player));
             data.put("servers", serverAccordion);
             data.put("server_pie_series", graphs.pie().serverPreferencePie(serverNames, worldTimesPerServer).getSlices());
             data.put("server_pie_colors", pieColors);
+        }
+        if (hasPermission.test(WebPermission.PAGE_PLAYER_STATISTICS)) {
+            data.put("statistics", playerStatistics(playerUUID));
+        } else {
+            data.put("statistics", List.of());
         }
         if (hasPermission.test(WebPermission.PAGE_PLAYER_PLUGINS)) {
             data.put("extensions", playerExtensionData(playerUUID));
@@ -151,6 +154,10 @@ public class PlayerJSONCreator {
         return data;
     }
 
+    private List<ServerMinecraftStatistics> playerStatistics(UUID playerUUID) {
+        return dbSystem.getDatabase().query(StatisticsQueries.fetchStatistics(playerUUID));
+    }
+
     private Map<String, Object> createPingGraphJson(PlayerContainer player) {
         PingGraph pingGraph = graphs.line().pingGraph(player.getUnsafe(PlayerKeys.PING));
         return Maps.builder(String.class, Object.class)
@@ -158,9 +165,9 @@ public class PlayerJSONCreator {
                 .put("avg_ping_series", pingGraph.getAvgGraph().getPointArrays())
                 .put("max_ping_series", pingGraph.getMaxGraph().getPointArrays())
                 .put("colors", Maps.builder(String.class, String.class)
-                        .put("min", theme.getValue(ThemeVal.GRAPH_MIN_PING))
-                        .put("avg", theme.getValue(ThemeVal.GRAPH_AVG_PING))
-                        .put("max", theme.getValue(ThemeVal.GRAPH_MAX_PING))
+                        .put("min", "#ffd54f")
+                        .put("avg", "#ffc107")
+                        .put("max", "#ffa000")
                         .build())
                 .build();
     }
@@ -174,21 +181,21 @@ public class PlayerJSONCreator {
 
         Map<String, Object> onlineActivity = new HashMap<>();
 
-        onlineActivity.put("playtime_30d", timeAmount.apply(sessions30d.toPlaytime()));
-        onlineActivity.put("active_playtime_30d", timeAmount.apply(sessions30d.toActivePlaytime()));
-        onlineActivity.put("afk_time_30d", timeAmount.apply(sessions30d.toAfkTime()));
-        onlineActivity.put("average_session_length_30d", timeAmount.apply(sessions30d.toAverageSessionLength()));
-        onlineActivity.put("median_session_length_30d", timeAmount.apply(sessions30d.toMedianSessionLength()));
+        onlineActivity.put("playtime_30d", sessions30d.toPlaytime());
+        onlineActivity.put("active_playtime_30d", sessions30d.toActivePlaytime());
+        onlineActivity.put("afk_time_30d", sessions30d.toAfkTime());
+        onlineActivity.put("average_session_length_30d", sessions30d.toAverageSessionLength());
+        onlineActivity.put("median_session_length_30d", sessions30d.toMedianSessionLength());
         onlineActivity.put("session_count_30d", sessions30d.count());
         onlineActivity.put("player_kill_count_30d", sessions30d.toPlayerKillCount());
         onlineActivity.put("mob_kill_count_30d", sessions30d.toMobKillCount());
         onlineActivity.put("death_count_30d", sessions30d.toDeathCount());
 
-        onlineActivity.put("playtime_7d", timeAmount.apply(sessions7d.toPlaytime()));
-        onlineActivity.put("active_playtime_7d", timeAmount.apply(sessions7d.toActivePlaytime()));
-        onlineActivity.put("afk_time_7d", timeAmount.apply(sessions7d.toAfkTime()));
-        onlineActivity.put("average_session_length_7d", timeAmount.apply(sessions7d.toAverageSessionLength()));
-        onlineActivity.put("median_session_length_7d", timeAmount.apply(sessions7d.toMedianSessionLength()));
+        onlineActivity.put("playtime_7d", sessions7d.toPlaytime());
+        onlineActivity.put("active_playtime_7d", sessions7d.toActivePlaytime());
+        onlineActivity.put("afk_time_7d", sessions7d.toAfkTime());
+        onlineActivity.put("average_session_length_7d", sessions7d.toAverageSessionLength());
+        onlineActivity.put("median_session_length_7d", sessions7d.toMedianSessionLength());
         onlineActivity.put("session_count_7d", sessions7d.count());
         onlineActivity.put("player_kill_count_7d", sessions7d.toPlayerKillCount());
         onlineActivity.put("mob_kill_count_7d", sessions7d.toMobKillCount());
@@ -214,13 +221,13 @@ public class PlayerJSONCreator {
         info.put("player_kill_count", player.getValue(PlayerKeys.PLAYER_KILL_COUNT).orElse(0));
         info.put("mob_kill_count", player.getValue(PlayerKeys.MOB_KILL_COUNT).orElse(0));
         info.put("death_count", player.getValue(PlayerKeys.DEATH_COUNT).orElse(0));
-        info.put("playtime", timeAmount.apply(sessions.toPlaytime()));
-        info.put("active_playtime", timeAmount.apply(sessions.toActivePlaytime()));
-        info.put("afk_time", timeAmount.apply(sessions.toAfkTime()));
+        info.put("playtime", sessions.toPlaytime());
+        info.put("active_playtime", sessions.toActivePlaytime());
+        info.put("afk_time", sessions.toAfkTime());
         info.put("session_count", sessions.count());
-        info.put("longest_session_length", timeAmount.apply(sessions.toLongestSessionLength()));
-        info.put("session_median", timeAmount.apply(sessions.toMedianSessionLength()));
-        info.put("activity_index", decimals.apply(activityIndex.getValue()));
+        info.put("longest_session_length", sessions.toLongestSessionLength());
+        info.put("session_median", sessions.toMedianSessionLength());
+        info.put("activity_index", activityIndex.getValue());
         info.put("activity_index_group", activityIndex.getGroupLang());
         info.put("favorite_server", perServer.favoriteServer().map(favoriteServer -> serverNames.getOrDefault(favoriteServer, favoriteServer.toString())).orElse(GenericLang.UNKNOWN.getKey()));
         info.put("latest_join_address", sessions.latestSession()
@@ -232,11 +239,11 @@ public class PlayerJSONCreator {
         int bestPing = ping.min();
 
         String unavailable = GenericLang.UNAVAILABLE.getKey();
-        info.put("average_ping", averagePing != -1.0 ? decimals.apply(averagePing) + " ms" : unavailable);
-        info.put("worst_ping", worstPing != -1.0 ? worstPing + " ms" : unavailable);
-        info.put("best_ping", bestPing != -1.0 ? bestPing + " ms" : unavailable);
-        info.put("registered", player.getValue(PlayerKeys.REGISTERED).map(year).orElse("-"));
-        info.put("last_seen", player.getValue(PlayerKeys.LAST_SEEN).map(year).orElse("-"));
+        info.put("average_ping", averagePing != -1.0 ? averagePing : unavailable);
+        info.put("worst_ping", worstPing != -1.0 ? worstPing : unavailable);
+        info.put("best_ping", bestPing != -1.0 ? bestPing : unavailable);
+        info.put("registered", player.getValue(PlayerKeys.REGISTERED).map(Object.class::cast).orElse("-"));
+        info.put("last_seen", player.getValue(PlayerKeys.LAST_SEEN).map(Object.class::cast).orElse("-"));
         info.put("last_seen_raw_value", player.getValue(PlayerKeys.LAST_SEEN).orElse(0L));
 
         return info;
@@ -344,9 +351,9 @@ public class PlayerJSONCreator {
     public static class Nickname {
         final String nickname;
         final String server;
-        final String date;
+        final long date;
 
-        public Nickname(String nickname, String server, String date) {
+        public Nickname(String nickname, String server, long date) {
             this.nickname = nickname;
             this.server = server;
             this.date = date;
@@ -354,8 +361,7 @@ public class PlayerJSONCreator {
 
         public static List<Nickname> fromDataNicknames(
                 List<com.djrapitops.plan.delivery.domain.Nickname> nicknames,
-                Map<ServerUUID, String> serverNames,
-                Formatter<Long> dateFormatter
+                Map<ServerUUID, String> serverNames
         ) {
             nicknames.sort(new DateHolderRecentComparator());
             List<Nickname> mapped = new ArrayList<>();
@@ -363,7 +369,7 @@ public class PlayerJSONCreator {
                 mapped.add(new Nickname(
                         nickname.getName(),
                         serverNames.getOrDefault(nickname.getServerUUID(), nickname.getServerUUID().toString()),
-                        dateFormatter.apply(nickname.getDate())
+                        nickname.getDate()
                 ));
             }
             return mapped;
@@ -372,15 +378,15 @@ public class PlayerJSONCreator {
 
     public static class ConnectionInfo {
         final String geolocation;
-        final String date;
+        final long date;
 
-        public ConnectionInfo(String geolocation, String date) {
+        public ConnectionInfo(String geolocation, long date) {
             this.geolocation = geolocation;
             this.date = date;
         }
 
-        public static List<ConnectionInfo> fromGeoInfo(List<GeoInfo> geoInfo, Formatter<Long> dateFormatter) {
-            return Lists.map(geoInfo, i -> new ConnectionInfo(i.getGeolocation(), dateFormatter.apply(i.getDate())));
+        public static List<ConnectionInfo> fromGeoInfo(List<GeoInfo> geoInfo) {
+            return Lists.map(geoInfo, i -> new ConnectionInfo(i.getGeolocation(), i.getDate()));
         }
     }
 

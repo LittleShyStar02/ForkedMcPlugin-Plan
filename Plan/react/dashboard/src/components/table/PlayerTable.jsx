@@ -1,24 +1,25 @@
 import {useTranslation} from "react-i18next";
 import {usePreferences} from "../../hooks/preferencesHook.jsx";
 import React, {useCallback, useEffect, useState} from "react";
-import {useTimePreferences} from "../text/FormattedTime.jsx";
-import {formatDate, useDatePreferences} from "../text/FormattedDate.jsx";
+import FormattedTime from "../text/FormattedTime.jsx";
+import FormattedDate from "../text/FormattedDate.tsx";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import {faCheck, faGlobe, faSignal, faUser, faUserPlus} from "@fortawesome/free-solid-svg-icons";
 import {faCalendarCheck, faCalendarPlus, faClock} from "@fortawesome/free-regular-svg-icons";
 import ExtensionIcon from "../extensions/ExtensionIcon.jsx";
-import {Link} from "react-router-dom";
-import {formatDecimals} from "../../util/formatters.js";
-import {formatTimeAmount} from "../../util/format/TimeAmountFormat.js";
+import {Link} from "react-router";
 import {ExtensionValueTableCell} from "../extensions/ExtensionCard.jsx";
-import {ChartLoader} from "../navigation/Loader.jsx";
+import {ChartLoader} from "../navigation/Loader.tsx";
 import DataTablesTable from "./DataTablesTable.jsx";
+import {localeService, reverseRegionLookupMap} from "../../service/localeService.js";
+import {usePingFormatter} from "../../util/format/usePingFormatter.js";
+import {useDecimalFormatter} from "../../util/format/useDecimalFormatter.js";
 
 const getActivityGroup = value => {
     const VERY_ACTIVE = 3.75;
-    const ACTIVE = 3.0;
-    const REGULAR = 2.0;
-    const IRREGULAR = 1.0;
+    const ACTIVE = 3;
+    const REGULAR = 2;
+    const IRREGULAR = 1;
     if (value >= VERY_ACTIVE) {
         return "html.label.veryActive"
     } else if (value >= ACTIVE) {
@@ -34,12 +35,11 @@ const getActivityGroup = value => {
 
 const PlayerTable = ({data, orderBy}) => {
     const {t} = useTranslation();
-    const {preferencesLoaded, decimalFormat} = usePreferences();
+    const {formatPing} = usePingFormatter();
+    const {formatDecimals} = useDecimalFormatter();
+    const {preferencesLoaded} = usePreferences();
 
     const [options, setOptions] = useState(undefined);
-
-    const timePreferences = useTimePreferences();
-    const datePreferences = useDatePreferences();
 
     useEffect(() => {
         if (!data) return;
@@ -82,33 +82,33 @@ const PlayerTable = ({data, orderBy}) => {
                 data: {_: descriptor.name + "Value", display: descriptor.name}
             }
         }));
-
-        const formatDateEasy = date => {
-            return formatDate(date, datePreferences.offset, datePreferences.pattern, false, datePreferences.recentDaysPattern, t);
-        }
+        const regions = new Intl.DisplayNames([localeService.getIntlFriendlyLocale()], {type: 'region'});
 
         const rows = data.players.map(player => {
+            const code = reverseRegionLookupMap[player.country];
+            const location = code ? regions.of(code) : player.country?.replace('Local Machine', t('html.value.localMachine'));
             const row = {
                 name: player.playerName,
                 uuid: player.playerUUID,
                 link: <Link to={"/player/" + player.playerUUID}>{player.playerName}</Link>,
                 activityIndex: player.activityIndex,
                 activityGroup: t(getActivityGroup(player.activityIndex)),
-                activityIndexAndGroup: formatDecimals(player.activityIndex, decimalFormat) + " (" + t(getActivityGroup(player.activityIndex)) + ")",
+                activityIndexAndGroup: formatDecimals(player.activityIndex) + " (" + t(getActivityGroup(player.activityIndex)) + ")",
                 activePlaytime: player.playtimeActive,
-                activePlaytimeFormatted: formatTimeAmount(timePreferences, player.playtimeActive),
+                activePlaytimeFormatted: <FormattedTime timeMs={player.playtimeActive}/>,
                 sessions: player.sessionCount,
                 registered: player.registered,
-                registeredFormatted: formatDateEasy(player.registered),
+                registeredFormatted: <FormattedDate date={player.registered} react/>,
                 lastSeen: player.lastSeen,
-                lastSeenFormatted: formatDateEasy(player.lastSeen),
-                country: player.country,
+                lastSeenFormatted: <FormattedDate date={player.lastSeen} react/>,
+                country: location,
                 pingAverage: player.pingAverage,
-                pingAverageFormatted: formatDecimals(player.pingAverage, decimalFormat) + "ms",
+                pingAverageFormatted: formatPing(formatDecimals(player.pingAverage)),
                 pingMax: player.pingMax,
-                pingMaxFormatted: player.pingMax + "ms",
+                pingMaxFormatted: formatPing(player.pingMax),
                 pingMin: player.pingMin,
-                pingMinFormatted: player.pingMin + "ms"
+                pingMinFormatted: formatPing(player.pingMin),
+                nicknames: player.nicknames,
             };
             data.extensionDescriptors.forEach(descriptor => {
                 row[descriptor.name] = <ExtensionValueTableCell data={player.extensionValues[descriptor.name]}/>;
@@ -122,9 +122,9 @@ const PlayerTable = ({data, orderBy}) => {
             deferRender: true,
             columns: columns,
             data: rows,
-            order: [[orderBy !== undefined ? orderBy : 5, "desc"]]
+            order: [[orderBy === undefined ? 5 : orderBy, "desc"]]
         });
-    }, [data, orderBy, t, decimalFormat]);
+    }, [data, orderBy, t, formatPing, formatDecimals]);
 
     const rowKeyFunction = useCallback((row, column) => {
         return row.uuid + "-" + (column ? JSON.stringify(column.data) : '');

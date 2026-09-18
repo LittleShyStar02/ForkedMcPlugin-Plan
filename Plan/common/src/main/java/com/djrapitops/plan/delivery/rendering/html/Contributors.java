@@ -78,7 +78,7 @@ public class Contributors {
             new Contributor("QuakyCZ", LANG),
             new Contributor("MrFriggo", LANG),
             new Contributor("vacoup", CODE),
-            new Contributor("Kopo942", CODE),
+            new Contributor("AnttiMK", CODE),
             new Contributor("WolverStones", LANG),
             new Contributor("BruilsiozPro", LANG),
             new Contributor("AppleMacOS", CODE),
@@ -116,7 +116,12 @@ public class Contributors {
             new Contributor("mcmdev", CODE),
             new Contributor("ZhangYuheng", CODE),
             new Contributor("Zaemong", LANG),
-            new Contributor("YannicHock", CODE)
+            new Contributor("TWJohnJohn20116", LANG),
+            new Contributor("YannicHock", CODE),
+            new Contributor("SaolGhra", CODE),
+            new Contributor("Jsinco", CODE),
+            new Contributor("julianvdhogen", LANG),
+            new Contributor("Zoriot", CODE),
     };
 
     private Contributors() {
@@ -131,7 +136,7 @@ public class Contributors {
         CODE, LANG
     }
 
-    private static class Contributor implements Comparable<Contributor> {
+    public static class Contributor implements Comparable<Contributor> {
         final String name;
         final For[] contributed;
 

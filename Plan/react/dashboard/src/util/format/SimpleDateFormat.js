@@ -1,4 +1,20 @@
 import moment from 'moment';
+import 'moment/dist/locale/es';
+import 'moment/dist/locale/zh-cn';
+import 'moment/dist/locale/cs';
+import 'moment/dist/locale/de';
+import 'moment/dist/locale/fi';
+import 'moment/dist/locale/fr';
+import 'moment/dist/locale/it';
+import 'moment/dist/locale/ja';
+import 'moment/dist/locale/ko';
+import 'moment/dist/locale/nl';
+import 'moment/dist/locale/ru';
+import 'moment/dist/locale/tr';
+import 'moment/dist/locale/uk';
+import 'moment/dist/locale/pt-br';
+import 'moment/dist/locale/zh-tw';
+import {localeService} from "../../service/localeService.js";
 
 export const SimpleDateFormat = function (pattern) {
     this.pattern = pattern;
@@ -18,8 +34,9 @@ SimpleDateFormat.prototype.applyPattern = function (pattern) {
     this.pattern = pattern;
 }
 
-SimpleDateFormat.prototype.format = function (date) {
+SimpleDateFormat.prototype.format = function (date, locale) {
     let formattedString = "";
+    moment.locale(locale || localeService.getIntlFriendlyLocale());
     const d = moment.utc(date);
 
     let p = this._or(this.pattern, this._defaultPatternsByLocale[d.locale()]);

@@ -30,12 +30,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestResources {
 
+    public static final String CONFIG_PATH = "/assets/plan/config.yml";
+
     private TestResources() {
         /* static method class */
     }
 
-    public static File getTestResourceFile(String called, Class testClass) throws URISyntaxException {
+    public static File getAsset(String called) {
+        return new File("src/main/resources/assets/plan/" + called);
+    }
+
+    public static File getTestResourceFile(String called, Class<?> testClass) throws URISyntaxException {
         URL resource = testClass.getResource("/" + called);
+        if (resource == null) throw new IllegalArgumentException("Resource not found: " + called);
         URI resourceURI = resource.toURI();
         Path resourcePath = Paths.get(resourceURI);
         return resourcePath.toFile();
@@ -90,6 +97,13 @@ public class TestResources {
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to create file " + toFile.getAbsolutePath() + ", " + e.getMessage(), e);
+        }
+    }
+
+    public static byte[] getJarResourceAsBytes(String pathFromResourcesDirRoot) throws IOException {
+        try (InputStream asStream = TestResources.class.getResourceAsStream(pathFromResourcesDirRoot)) {
+            if (asStream == null) throw new IllegalArgumentException("Resource not found: " + pathFromResourcesDirRoot);
+            return asStream.readAllBytes();
         }
     }
 }

@@ -1,9 +1,9 @@
 import React, {useCallback, useEffect} from 'react';
-import LoadIn from "../../components/animation/LoadIn";
+import LoadIn from "../../components/animation/LoadIn.tsx";
 import {Col, Row} from "react-bootstrap";
 import QueryPath from "../../components/alert/QueryPath";
 import {useQueryResultContext} from "../../hooks/queryResultContext";
-import {useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router";
 import PlayerListCard from "../../components/cards/common/PlayerListCard";
 import {fetchExistingResults} from "../../service/queryService";
 import {PlayerbaseDevelopmentCardWithData} from "../../components/cards/server/graphs/PlayerbaseDevelopmentCard";
@@ -11,7 +11,7 @@ import {CurrentPlayerbaseCardWithData} from "../../components/cards/server/graph
 import {useTranslation} from "react-i18next";
 import GeolocationsCard from "../../components/cards/common/GeolocationsCard";
 import SessionsWithinViewCard from "../../components/cards/query/SessionsWithinViewCard";
-import {useNavigation} from "../../hooks/navigationHook";
+import {useNavigation} from "../../hooks/navigationHook.tsx";
 
 const serverCount = (count, t) => {
     if (count === 0) {
@@ -21,7 +21,7 @@ const serverCount = (count, t) => {
     } else if (count === 2) {
         return t('html.query.label.servers.two');
     } else {
-        return t('html.query.label.servers.many').replace('{number}', count);
+        return t('html.query.label.servers.many', {number: count});
     }
 }
 
@@ -89,8 +89,11 @@ const QueryResultView = () => {
                     </Col>
                     <Col lg={4}>
                         <CurrentPlayerbaseCardWithData data={result.data.activity}
-                                                       title={t('html.query.title.activityOnDate')
-                                                           .replace('<span id="activity-date"></span>', result.view.beforeDate)}/>
+                                                       title={t('html.query.title.activityOnDate',
+                                                           {
+                                                               activityDate: result.view.beforeDate,
+                                                               interpolation: {escapeValue: false}
+                                                           })}/>
                     </Col>
                 </Row>
                 <Row>

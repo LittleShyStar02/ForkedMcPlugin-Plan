@@ -1,32 +1,31 @@
-import React, {useEffect} from "react";
-import Highcharts from 'highcharts';
+import React, {useEffect, useMemo} from "react";
+import Highcharts from 'highcharts/esm/highcharts';
+import "highcharts/esm/modules/no-data-to-display";
+import "highcharts/esm/modules/accessibility";
 
-import {formatTimeAmount} from '../../util/formatters'
-import {useTheme} from "../../hooks/themeHook";
+import {useTheme} from "../../hooks/themeHook.tsx";
 import {withReducedSaturation} from "../../util/colors";
 import {useTranslation} from "react-i18next";
-import NoDataDisplay from "highcharts/modules/no-data-to-display";
-import Accessibility from "highcharts/modules/accessibility";
+import {usePreferences} from "../../hooks/preferencesHook.jsx";
+import {classNames} from "../../util/classNames.ts";
+import {useTimeAmountFormatter} from "../../util/format/useTimeAmountFormatter.js";
+import {useI18nFriendlyLanguage} from "../../service/localeService.js";
 
 const ServerPie = ({colors, series}) => {
     const {t} = useTranslation();
     const {nightModeEnabled, graphTheming} = useTheme();
+    const {preferencesLoaded} = usePreferences();
+    const {formatTime} = useTimeAmountFormatter();
 
-    useEffect(() => {
+    const chart = useMemo(() => {
         const reduceColors = (colorsToReduce) => colorsToReduce.map(color => withReducedSaturation(color));
-
         const pieSeries = {
             name: t('html.label.serverPlaytime'),
             colorByPoint: true,
             colors: nightModeEnabled ? reduceColors(colors) : colors,
             data: series
         };
-
-        NoDataDisplay(Highcharts);
-        Accessibility(Highcharts);
-        Highcharts.setOptions(graphTheming);
-        Highcharts.setOptions({lang: {noData: t('html.label.noDataToDisplay')}});
-        Highcharts.chart('server-pie', {
+        return {
             chart: {
                 noData: t('html.label.noDataToDisplay'),
                 backgroundColor: 'transparent',
@@ -47,14 +46,29 @@ const ServerPie = ({colors, series}) => {
             },
             tooltip: {
                 formatter: function () {
-                    return '<b>' + this.point.name + ':</b> ' + formatTimeAmount(this.y) + ' (' + this.percentage.toFixed(2) + '%)';
+                    return '<b>' + this.point.name + ':</b> ' + formatTime(this.y) + ' (' + this.percentage.toFixed(2) + '%)';
                 }
             },
             series: [pieSeries]
-        });
-    }, [colors, series, graphTheming, nightModeEnabled, t]);
+        }
+    }, [series, colors, formatTime, t])
+    const locale = useI18nFriendlyLanguage();
+    useEffect(() => {
+        Highcharts.setOptions({
+            lang: {
+                locale: locale,
+                noData: t('html.label.noDataToDisplay')
+            }
+        })
+    }, [locale]);
+    useEffect(() => {
+        Highcharts.setOptions(graphTheming);
+        Highcharts.chart('server-pie', chart);
+    }, [chart, graphTheming]);
 
-    return (<div className="chart-pie" id="server-pie"/>);
+    if (!preferencesLoaded) return <Loader/>;
+
+    return (<div className={classNames("chart-pie", series.length > 7 ? 'big' : undefined)} id="server-pie"/>);
 }
 
 export default ServerPie;

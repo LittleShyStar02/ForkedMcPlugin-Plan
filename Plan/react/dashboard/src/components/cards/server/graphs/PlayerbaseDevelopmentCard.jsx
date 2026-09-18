@@ -1,15 +1,15 @@
 import {useTranslation} from "react-i18next";
 import {useDataRequest} from "../../../../hooks/dataFetchHook";
 import {fetchPlayerbaseDevelopmentGraph} from "../../../../service/serverService";
-import {ErrorViewCard} from "../../../../views/ErrorView";
+import {ErrorViewCard} from "../../../../views/ErrorView.tsx";
 import {Card} from "react-bootstrap";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import {faChartLine} from "@fortawesome/free-solid-svg-icons";
 import React, {useCallback} from "react";
 import PlayerbaseGraph from "../../../graphs/PlayerbaseGraph";
-import {CardLoader} from "../../../navigation/Loader";
+import {CardLoader} from "../../../navigation/Loader.tsx";
 import {faQuestionCircle} from "@fortawesome/free-regular-svg-icons";
-import {useNavigation} from "../../../../hooks/navigationHook";
+import {useNavigation} from "../../../../hooks/navigationHook.tsx";
 
 export const PlayerbaseDevelopmentCardWithData = ({data, title}) => {
     const {t} = useTranslation();
@@ -19,11 +19,11 @@ export const PlayerbaseDevelopmentCardWithData = ({data, title}) => {
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black" style={{width: "100%"}}>
-                    <Fa className="col-amber"
-                        icon={faChartLine}/> {t(title ? title : 'html.label.playerbaseDevelopment')}
+                <h6 className="col-text" style={{width: "100%"}}>
+                    <Fa className="col-players-activity-index"
+                        icon={faChartLine}/> {t(title || 'html.label.playerbaseDevelopment')}
                     <button className={"float-end"} onClick={openHelp}>
-                        <Fa className={"col-blue"}
+                        <Fa className={"col-help-icon"}
                             icon={faQuestionCircle}/>
                     </button>
                 </h6>

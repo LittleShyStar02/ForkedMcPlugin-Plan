@@ -16,6 +16,7 @@
  */
 package com.djrapitops.plan.delivery.webserver;
 
+import com.djrapitops.plan.PlanSystem;
 import com.djrapitops.plan.delivery.domain.container.PlayerContainer;
 import com.djrapitops.plan.delivery.domain.keys.PlayerKeys;
 import com.djrapitops.plan.delivery.formatting.Formatter;
@@ -28,18 +29,19 @@ import com.djrapitops.plan.delivery.rendering.pages.PageFactory;
 import com.djrapitops.plan.delivery.web.resolver.MimeType;
 import com.djrapitops.plan.delivery.web.resolver.Response;
 import com.djrapitops.plan.delivery.web.resolver.ResponseBuilder;
-import com.djrapitops.plan.delivery.web.resolver.exception.NotFoundException;
 import com.djrapitops.plan.delivery.web.resolver.request.Request;
 import com.djrapitops.plan.delivery.web.resource.WebResource;
+import com.djrapitops.plan.delivery.webserver.resolver.ETag;
 import com.djrapitops.plan.identification.Identifiers;
 import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.ErrorPageLang;
-import com.djrapitops.plan.settings.theme.Theme;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.containers.ContainerFetchQueries;
+import com.djrapitops.plan.storage.database.queries.objects.ServerQueries;
+import com.djrapitops.plan.storage.file.FileResource;
 import com.djrapitops.plan.storage.file.PlanFiles;
 import com.djrapitops.plan.storage.file.PublicHtmlFiles;
 import com.djrapitops.plan.storage.file.Resource;
@@ -47,7 +49,7 @@ import com.djrapitops.plan.utilities.dev.Untrusted;
 import com.djrapitops.plan.utilities.java.Maps;
 import com.djrapitops.plan.utilities.java.UnaryChain;
 import dagger.Lazy;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.commons.text.StringEscapeUtils;
 import org.eclipse.jetty.http.HttpHeader;
 
@@ -55,8 +57,9 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.Optional;
-import java.util.UUID;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
@@ -74,7 +77,6 @@ public class ResponseFactory {
     private final PageFactory pageFactory;
     private final Locale locale;
     private final DBSystem dbSystem;
-    private final Theme theme;
     private final Lazy<Addresses> addresses;
     private final Lazy<BundleAddressCorrection> bundleAddressCorrection;
     private final Formatter<Long> httpLastModifiedFormatter;
@@ -87,7 +89,6 @@ public class ResponseFactory {
             Locale locale,
             DBSystem dbSystem,
             Formatters formatters,
-            Theme theme,
             Lazy<Addresses> addresses,
             Lazy<BundleAddressCorrection> bundleAddressCorrection
     ) {
@@ -96,11 +97,17 @@ public class ResponseFactory {
         this.pageFactory = pageFactory;
         this.locale = locale;
         this.dbSystem = dbSystem;
-        this.theme = theme;
         this.addresses = addresses;
 
         httpLastModifiedFormatter = formatters.httpLastModifiedLong();
         this.bundleAddressCorrection = bundleAddressCorrection;
+    }
+
+    private static Response browserCachedNotChangedResponse() {
+        return Response.builder()
+                .setStatus(304)
+                .setContent(new byte[0])
+                .build();
     }
 
     /**
@@ -112,33 +119,25 @@ public class ResponseFactory {
                 .asWebResource();
     }
 
-    private static Response browserCachedNotChangedResponse() {
-        return Response.builder()
-                .setStatus(304)
-                .setContent(new byte[0])
-                .build();
-    }
-
     private Response forPage(@Untrusted Request request, Page page) {
         return forPage(request, page, 200);
     }
 
     private Response forPage(@Untrusted Request request, Page page, int responseCode) {
         long modified = page.lastModified();
-        Optional<Long> etag = Identifiers.getEtag(request);
+        Optional<ETag> etag = Identifiers.getEtag(request);
 
-        if (etag.isPresent() && modified == etag.get()) {
-            return browserCachedNotChangedResponse();
+        if (etag.isEmpty() || etag.get().isOutdated(modified)) {
+            return Response.builder()
+                    .setStatus(responseCode)
+                    .setMimeType(MimeType.HTML)
+                    .setContent(page.toHtml())
+                    .setHeader(HttpHeader.CACHE_CONTROL.asString(), CacheStrategy.CHECK_ETAG)
+                    .setHeader(HttpHeader.LAST_MODIFIED.asString(), httpLastModifiedFormatter.apply(modified))
+                    .setHeader(HttpHeader.ETAG.asString(), modified)
+                    .build();
         }
-
-        return Response.builder()
-                .setStatus(responseCode)
-                .setMimeType(MimeType.HTML)
-                .setContent(page.toHtml())
-                .setHeader(HttpHeader.CACHE_CONTROL.asString(), CacheStrategy.CHECK_ETAG)
-                .setHeader(HttpHeader.LAST_MODIFIED.asString(), httpLastModifiedFormatter.apply(modified))
-                .setHeader(HttpHeader.ETAG.asString(), modified)
-                .build();
+        return browserCachedNotChangedResponse();
     }
 
     private Response forInternalError(@Untrusted Throwable error, String cause) {
@@ -147,16 +146,6 @@ public class ResponseFactory {
                 .setContent(pageFactory.internalErrorPage(cause, error).toHtml())
                 .setStatus(500)
                 .build();
-    }
-
-    public Response playersPageResponse(@Untrusted Request request) {
-        try {
-            Optional<Response> error = checkDbClosedError();
-            if (error.isPresent()) return error.get();
-            return forPage(request, pageFactory.playersPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate players page");
-        }
     }
 
     private Optional<Response> checkDbClosedError() {
@@ -182,13 +171,13 @@ public class ResponseFactory {
                 .build();
     }
 
-    private Response getCachedOrNew(long modified, String fileName, Function<String, Response> newResponseFunction) {
+    private Response getCachedOrNew(ETag etag, String fileName, Function<String, Response> newResponseFunction) {
         WebResource resource = getPublicOrJarResource(fileName);
         Optional<Long> lastModified = resource.getLastModified();
-        if (lastModified.isPresent() && modified == lastModified.get()) {
-            return browserCachedNotChangedResponse();
-        } else {
+        if (lastModified.isEmpty() || etag.isOutdated(lastModified.get(), () -> "config-" + PlanSystem.LAST_RELOAD.get())) {
             return newResponseFunction.apply(fileName);
+        } else {
+            return browserCachedNotChangedResponse();
         }
     }
 
@@ -196,23 +185,14 @@ public class ResponseFactory {
         return forInternalError(e, cause);
     }
 
-    public Response networkPageResponse(@Untrusted Request request) {
-        Optional<Response> error = checkDbClosedError();
-        if (error.isPresent()) return error.get();
-        try {
-            return forPage(request, pageFactory.networkPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate network page");
-        }
-    }
-
     public Response serverPageResponse(@Untrusted Request request, ServerUUID serverUUID) {
         Optional<Response> error = checkDbClosedError();
         if (error.isPresent()) return error.get();
         try {
-            return forPage(request, pageFactory.serverPage(serverUUID));
-        } catch (NotFoundException e) {
-            return notFound404(e.getMessage());
+            if (dbSystem.getDatabase().query(ServerQueries.fetchServerMatchingIdentifier(serverUUID)).isEmpty()) {
+                return notFound404("Server not found in the database");
+            }
+            return forPage(request, pageFactory.reactPage());
         } catch (IOException e) {
             return forInternalError(e, "Failed to generate server page");
         }
@@ -226,16 +206,22 @@ public class ResponseFactory {
                 .build();
     }
 
-    public Response javaScriptResponse(long modified, @Untrusted String fileName) {
-        return getCachedOrNew(modified, fileName, this::javaScriptResponse);
+    public Response javaScriptResponse(ETag etag, @Untrusted String fileName) {
+        return getCachedOrNew(etag, fileName, this::javaScriptResponse);
     }
 
     public Response javaScriptResponse(@Untrusted String fileName) {
         try {
             WebResource resource = getPublicOrJarResource(fileName);
+            AtomicBoolean containsPlaceholders = new AtomicBoolean(false);
             String content = UnaryChain.of(resource.asString())
-                    .chain(this::replaceMainAddressPlaceholder)
-                    .chain(theme::replaceThemeColors)
+                    .chain(contents -> {
+                        String replacement = replaceMainAddressPlaceholder(contents);
+                        containsPlaceholders.set(
+                                replacement.hashCode() != contents.hashCode() || contents.length() != replacement.length()
+                        );
+                        return replacement;
+                    })
                     .chain(contents -> bundleAddressCorrection.get().correctAddressForWebserver(contents, fileName))
                     .apply();
             ResponseBuilder responseBuilder = Response.builder()
@@ -244,11 +230,12 @@ public class ResponseFactory {
                     .setStatus(200);
 
             if (fileName.contains(STATIC_BUNDLE_FOLDER)) {
+                // Can't cache main bundle in browser since base path might change
+                boolean alwaysCheckRefetch = fileName.contains("index") || containsPlaceholders.get();
                 resource.getLastModified().ifPresent(lastModified -> responseBuilder
-                        // Can't cache main bundle in browser since base path might change
-                        .setHeader(HttpHeader.CACHE_CONTROL.asString(), fileName.contains("index") ? CacheStrategy.CHECK_ETAG : CacheStrategy.CACHE_IN_BROWSER)
+                        .setHeader(HttpHeader.CACHE_CONTROL.asString(), alwaysCheckRefetch ? CacheStrategy.CHECK_ETAG : CacheStrategy.CACHE_IN_BROWSER)
                         .setHeader(HttpHeader.LAST_MODIFIED.asString(), httpLastModifiedFormatter.apply(lastModified))
-                        .setHeader(HttpHeader.ETAG.asString(), lastModified));
+                        .setHeader(HttpHeader.ETAG.asString(), alwaysCheckRefetch ? "config-" + PlanSystem.LAST_RELOAD.get() : lastModified));
             }
             return responseBuilder.build();
         } catch (UncheckedIOException e) {
@@ -259,18 +246,17 @@ public class ResponseFactory {
     private String replaceMainAddressPlaceholder(String resource) {
         String address = addresses.get().getAccessAddress()
                 .orElseGet(addresses.get()::getFallbackLocalhostAddress);
-        return StringUtils.replace(resource, "PLAN_BASE_ADDRESS", address);
+        return Strings.CS.replace(resource, "PLAN_BASE_ADDRESS", address);
     }
 
-    public Response cssResponse(long modified, @Untrusted String fileName) {
-        return getCachedOrNew(modified, fileName, this::cssResponse);
+    public Response cssResponse(ETag etag, @Untrusted String fileName) {
+        return getCachedOrNew(etag, fileName, this::cssResponse);
     }
 
     public Response cssResponse(@Untrusted String fileName) {
         try {
             WebResource resource = getPublicOrJarResource(fileName);
             String content = UnaryChain.of(resource.asString())
-                    .chain(theme::replaceThemeColors)
                     .chain(contents -> bundleAddressCorrection.get().correctAddressForWebserver(contents, fileName))
                     .apply();
 
@@ -292,8 +278,8 @@ public class ResponseFactory {
         }
     }
 
-    public Response imageResponse(long modified, @Untrusted String fileName) {
-        return getCachedOrNew(modified, fileName, this::imageResponse);
+    public Response imageResponse(ETag eTag, @Untrusted String fileName) {
+        return getCachedOrNew(eTag, fileName, this::imageResponse);
     }
 
     public Response imageResponse(@Untrusted String fileName) {
@@ -316,7 +302,7 @@ public class ResponseFactory {
         }
     }
 
-    public Response fontResponse(long modified, @Untrusted String fileName) {
+    public Response fontResponse(ETag modified, @Untrusted String fileName) {
         return getCachedOrNew(modified, fileName, this::fontResponse);
     }
 
@@ -351,7 +337,7 @@ public class ResponseFactory {
         }
     }
 
-    public Response publicHtmlResourceResponse(long modified, @Untrusted String fileName, String mimeType) {
+    public Response publicHtmlResourceResponse(ETag etag, @Untrusted String fileName, String mimeType) {
         // Slightly different from getCachedOrNew
         WebResource resource = publicHtmlFiles.findPublicHtmlResource(fileName)
                 .map(Resource::asWebResource)
@@ -359,10 +345,10 @@ public class ResponseFactory {
         if (resource == null) return null;
 
         Optional<Long> lastModified = resource.getLastModified();
-        if (lastModified.isPresent() && modified == lastModified.get()) {
-            return browserCachedNotChangedResponse();
-        } else {
+        if (lastModified.isEmpty() || etag.isOutdated(lastModified.get())) {
             return publicHtmlResourceResponse(fileName, mimeType);
+        } else {
+            return browserCachedNotChangedResponse();
         }
     }
 
@@ -393,7 +379,25 @@ public class ResponseFactory {
     }
 
     public Response redirectResponse(String location) {
-        return Response.builder().redirectTo(location).build();
+        String redirectTo = addresses.get().isAlternativeAddressEnabled()
+                ? addresses.get().getMainAddress().map(address -> {
+                    if (location.startsWith("/")) {
+                        if (address.endsWith("/")) {
+                            return address + location.substring(1);
+                        } else {
+                            return address + location;
+                        }
+                    } else {
+                        if (address.endsWith("/")) {
+                            return address + location;
+                        } else {
+                            return address + "/" + location;
+                        }
+                    }
+                })
+                .orElse(location)
+                : location; // Alternative IP not enabled, use path.
+        return Response.builder().redirectTo(redirectTo).build();
     }
 
     public Response faviconResponse() {
@@ -447,9 +451,21 @@ public class ResponseFactory {
         }
     }
 
+    public Response notFound404Json(String message) {
+        return Response.builder()
+                .setMimeType(MimeType.JSON)
+                .setJSONContent(Map.of("status", "404", "message", message))
+                .setStatus(404)
+                .build();
+    }
+
     public Response forbidden403() {
         return forbidden403("Your user is not authorized to view this page.<br>"
-                + "If you believe this is an error contact staff to change your access level.");
+                + "If you believe this is an error contact staff to change your access.");
+    }
+
+    public Response forbidden403Json() {
+        return forbidden403Json("Your user is not authorized to view this page. If you believe this is an error contact staff to change your access.");
     }
 
     public Response forbidden403(String message) {
@@ -462,6 +478,19 @@ public class ResponseFactory {
         } catch (IOException e) {
             return forInternalError(e, "Failed to generate 403 page");
         }
+    }
+
+    public Response forbidden403Json(String message) {
+        return Response.builder()
+                .setMimeType(MimeType.JSON)
+                .setJSONContent(Maps.builder(String.class, Object.class)
+                        .put("status", 403)
+                        .put("message", message)
+                        .put("icon", List.of("far", "fa-hand-paper"))
+                        .put("title", "403 Forbidden")
+                        .build())
+                .setStatus(403)
+                .build();
     }
 
     public Response failedLoginAttempts403() {
@@ -504,12 +533,24 @@ public class ResponseFactory {
                 .build();
     }
 
+    public Response methodNotAllowed405(String target, String... allowedMethods) {
+        return Response.builder()
+                .setMimeType(MimeType.JSON)
+                .setJSONContent(Maps.builder(String.class, Object.class)
+                        .put("status", 405)
+                        .put("error", "HTTP method not allowed, allowed: " + Arrays.toString(allowedMethods))
+                        .put("requestedTarget", target)
+                        .build())
+                .setStatus(405)
+                .build();
+    }
+
     public Response playerPageResponse(@Untrusted Request request, UUID playerUUID) {
         try {
             Database db = dbSystem.getDatabase();
             PlayerContainer player = db.query(ContainerFetchQueries.fetchPlayerContainer(playerUUID));
             if (player.getValue(PlayerKeys.REGISTERED).isPresent()) {
-                return forPage(request, pageFactory.playerPage());
+                return forPage(request, pageFactory.reactPage());
             } else {
                 return forPage(request, pageFactory.reactPage(), 404);
             }
@@ -517,38 +558,6 @@ public class ResponseFactory {
             return playerNotFound404();
         } catch (IOException e) {
             return forInternalError(e, "Failed to generate player page");
-        }
-    }
-
-    public Response loginPageResponse(@Untrusted Request request) {
-        try {
-            return forPage(request, pageFactory.loginPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate login page");
-        }
-    }
-
-    public Response registerPageResponse(@Untrusted Request request) {
-        try {
-            return forPage(request, pageFactory.registerPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate register page");
-        }
-    }
-
-    public Response queryPageResponse(@Untrusted Request request) {
-        try {
-            return forPage(request, pageFactory.queryPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate query page");
-        }
-    }
-
-    public Response errorsPageResponse(@Untrusted Request request) {
-        try {
-            return forPage(request, pageFactory.errorsPage());
-        } catch (IOException e) {
-            return forInternalError(e, "Failed to generate errors page");
         }
     }
 
@@ -569,5 +578,40 @@ public class ResponseFactory {
         } catch (UncheckedIOException | IOException e) {
             return forInternalError(e, "Could not read index.html");
         }
+    }
+
+    public Response themeResponse(@Untrusted String themeName, Request request) {
+        Path themeDirectory = files.getThemeDirectory();
+        try {
+            String resourceName = themeName + ".json";
+            WebResource foundTheme = files.attemptToFind(themeDirectory, resourceName)
+                    .map(file -> (Resource) new FileResource(file.getName(), file))
+                    .filter(file -> request.getQuery().get("jarOnly").isEmpty())
+                    .orElseGet(() -> files.getResourceFromJar("themes/" + themeName + ".json"))
+                    .asWebResource();
+
+            Optional<Long> lastModified = foundTheme.getLastModified();
+            @Untrusted Optional<ETag> tag = Identifiers.getEtag(request);
+            if (tag.isEmpty() || lastModified.isEmpty() || tag.get().isOutdated(lastModified.get())) {
+                long date = lastModified.orElseGet(System::currentTimeMillis);
+                return Response.builder()
+                        .setHeader(HttpHeader.CACHE_CONTROL.asString(), CacheStrategy.CHECK_ETAG)
+                        .setHeader(HttpHeader.LAST_MODIFIED.asString(), httpLastModifiedFormatter.apply(date))
+                        .setHeader(HttpHeader.ETAG.asString(), date)
+                        .setJSONContent(foundTheme.asString())
+                        .build();
+            } else {
+                return browserCachedNotChangedResponse();
+            }
+        } catch (UncheckedIOException e) {
+            return notFound404Json("Theme file by that name doesn't exist");
+        }
+    }
+
+    public Response successResponse() {
+        return Response.builder()
+                .setMimeType(MimeType.JSON)
+                .setJSONContent(Map.of("success", true))
+                .build();
     }
 }

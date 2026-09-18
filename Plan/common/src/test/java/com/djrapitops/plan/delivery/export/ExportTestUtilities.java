@@ -24,17 +24,15 @@ import com.djrapitops.plan.storage.database.queries.objects.ServerQueries;
 import com.djrapitops.plan.storage.database.transactions.events.PlayerRegisterTransaction;
 import com.djrapitops.plan.storage.database.transactions.events.StoreSessionTransaction;
 import com.djrapitops.plan.storage.database.transactions.events.StoreWorldNameTransaction;
+import com.djrapitops.plan.storage.database.transactions.events.TPSStoreTransaction;
 import com.djrapitops.plan.utilities.java.Lists;
-import org.apache.commons.lang3.StringUtils;
-import org.openqa.selenium.By;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.NoSuchElementException;
-import org.openqa.selenium.WebElement;
+import org.apache.commons.lang3.Strings;
+import org.awaitility.Awaitility;
+import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.logging.LogEntry;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.awaitility.Awaitility;
 import utilities.RandomData;
 import utilities.TestConstants;
 
@@ -43,10 +41,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -61,6 +59,10 @@ public class ExportTestUtilities {
         /* Static utility method class */
     }
 
+    public static void assertNoLogs(WebDriver driver, String endpoint) {
+        assertNoLogs(driver.manage().logs().get(LogType.BROWSER).getAll(), endpoint);
+    }
+
     public static void assertNoLogs(List<LogEntry> logs, String endpoint) {
         List<String> loggedLines = logs.stream()
                 .map(log -> "\n" + log.getLevel().getName() + " " + log.getMessage())
@@ -69,10 +71,9 @@ public class ExportTestUtilities {
     }
 
     private static boolean ignoredLogLines(String log) {
-        return !StringUtils.containsAny(log,
-                "fonts.gstatic.com", "fonts.googleapis.com", "cdn.jsdelivr.net", "manifest.json",
-                "React Router Future Flag Warning" // TODO remove after update to react-router-dom v7
-        );
+        return !Strings.CI.containsAny(log,
+                "fonts.gstatic.com", "fonts.googleapis.com", "cdn.jsdelivr.net", "manifest.json"
+        ) || log.contains("datapoint") && log.contains("404");
     }
 
     public static void assertNoLogsExceptFaviconError(List<LogEntry> logs) {
@@ -87,7 +88,7 @@ public class ExportTestUtilities {
     public static Optional<WebElement> getMainPageElement(ChromeDriver driver) {
         try {
             return Optional.of(driver.findElement(By.className("load-in")));
-        } catch (NoSuchElementException e) {
+        } catch (NoSuchElementException _) {
             return Optional.empty();
         }
     }
@@ -95,7 +96,7 @@ public class ExportTestUtilities {
     public static Optional<WebElement> getElementById(ChromeDriver driver, String id) {
         try {
             return Optional.of(driver.findElement(By.id(id)));
-        } catch (NoSuchElementException e) {
+        } catch (NoSuchElementException _) {
             return Optional.empty();
         }
     }
@@ -105,7 +106,7 @@ public class ExportTestUtilities {
         driver.get(address);
 
         new WebDriverWait(driver, Duration.of(10, ChronoUnit.SECONDS)).until(
-                webDriver -> ((JavascriptExecutor) webDriver).executeScript("return document.readyState").equals("complete"));
+                webDriver -> "complete".equals(((JavascriptExecutor) webDriver).executeScript("return document.readyState")));
 
         assertFalse(driver.findElement(By.tagName("body")).getText().contains("Bad Gateway"), "502 Bad Gateway, nginx could not reach Plan");
 
@@ -113,10 +114,7 @@ public class ExportTestUtilities {
                 .atMost(Duration.of(10, ChronoUnit.SECONDS))
                 .until(() -> getMainPageElement(driver).map(WebElement::isDisplayed).orElse(false));
 
-        List<LogEntry> logs = new ArrayList<>();
-        logs.addAll(driver.manage().logs().get(LogType.CLIENT).getAll());
-        logs.addAll(driver.manage().logs().get(LogType.BROWSER).getAll());
-        return logs;
+        return driver.manage().logs().get(LogType.BROWSER).getAll();
     }
 
     static void export(Exporter exporter, Database database, ServerUUID serverUUID) throws Exception {
@@ -135,12 +133,23 @@ public class ExportTestUtilities {
         database.executeTransaction(new StoreSessionTransaction(session));
     }
 
+    static void saveServerData(Database database, ServerUUID serverUUID) {
+        RandomData.dateOrderedTPS(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(12)).forEach(tps -> database.executeTransaction(new TPSStoreTransaction(serverUUID, tps)).join());
+        RandomData.dateOrderedTPS(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(8)).forEach(tps -> database.executeTransaction(new TPSStoreTransaction(serverUUID, tps)).join());
+        RandomData.dateOrderedTPS(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(15)).forEach(tps -> database.executeTransaction(new TPSStoreTransaction(serverUUID, tps)).join());
+        RandomData.dateOrderedTPS(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(22)).forEach(tps -> database.executeTransaction(new TPSStoreTransaction(serverUUID, tps)).join());
+        RandomData.dateOrderedTPS(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(29)).forEach(tps -> database.executeTransaction(new TPSStoreTransaction(serverUUID, tps)).join());
+    }
+
     public static List<String> getEndpointsToTest(ServerUUID serverUUID) {
         return Lists.builder(String.class)
                 .add("/")
                 .addAll(ServerPageExporter.getRedirections(serverUUID))
                 .addAll(PlayerPageExporter.getRedirections(TestConstants.PLAYER_ONE_UUID))
                 .add("/players")
+                .add("/theme-editor")
+                .add("/theme-editor/new")
+                .add("/theme-editor/delete")
                 .build();
     }
 

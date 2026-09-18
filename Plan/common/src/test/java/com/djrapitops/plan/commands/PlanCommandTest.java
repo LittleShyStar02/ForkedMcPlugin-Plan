@@ -36,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mockito;
+import utilities.DBPreparer;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +46,6 @@ import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -155,11 +155,12 @@ class PlanCommandTest {
     }
 
     @Test
-    void networkCommandSendsLink(Database database) throws ExecutionException, InterruptedException {
+    void networkCommandSendsLink(Database database) {
         try {
             Server server = new Server(ServerUUID.randomUUID(), "Serve", "", "");
             server.setProxy(true);
-            database.executeTransaction(new StoreServerInformationTransaction(server)).get();
+            database.executeTransaction(new StoreServerInformationTransaction(server));
+            DBPreparer.awaitUntilTransactionsComplete(database);
 
             CMDSender sender = runCommand("network", "plan.network");
 

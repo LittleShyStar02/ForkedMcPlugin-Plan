@@ -20,8 +20,7 @@ import com.djrapitops.plan.storage.database.DBType;
 import com.djrapitops.plan.storage.database.sql.building.CreateTableBuilder;
 import com.djrapitops.plan.storage.database.sql.building.Sql;
 
-import static com.djrapitops.plan.storage.database.sql.building.Sql.DELETE_FROM;
-import static com.djrapitops.plan.storage.database.sql.building.Sql.WHERE;
+import static com.djrapitops.plan.storage.database.sql.building.Sql.*;
 
 /**
  * Table information about 'plan_cookies'
@@ -30,17 +29,21 @@ import static com.djrapitops.plan.storage.database.sql.building.Sql.WHERE;
  */
 public class CookieTable {
 
+    public static final int MAX_IP_ADDRESS_LENGTH = 1000;
+
     public static final String TABLE_NAME = "plan_cookies";
 
     public static final String ID = "id";
     public static final String WEB_USERNAME = "web_username";
     public static final String COOKIE = "cookie";
+    public static final String IP_ADDRESS = "ip_address";
     public static final String EXPIRES = "expires";
 
-    public static final String INSERT_STATEMENT = "INSERT INTO " + TABLE_NAME + " (" +
+    public static final String INSERT_STATEMENT = INSERT_INTO + TABLE_NAME + " (" +
             WEB_USERNAME + ',' +
             COOKIE + ',' +
-            EXPIRES + ") VALUES (?,?,?)";
+            EXPIRES + ',' +
+            IP_ADDRESS + ") VALUES (?,?,?,?)";
 
     public static final String DELETE_BY_COOKIE_STATEMENT = DELETE_FROM + TABLE_NAME +
             WHERE + COOKIE + "=?";
@@ -53,7 +56,6 @@ public class CookieTable {
 
     public static final String DELETE_ALL_STATEMENT = DELETE_FROM + TABLE_NAME;
 
-
     private CookieTable() {
         /* Static information class */
     }
@@ -64,6 +66,7 @@ public class CookieTable {
                 .column(WEB_USERNAME, Sql.varchar(100)).notNull()
                 .column(EXPIRES, Sql.LONG).notNull()
                 .column(COOKIE, Sql.varchar(64)).notNull()
+                .column(IP_ADDRESS, Sql.varchar(MAX_IP_ADDRESS_LENGTH)) // Max IPv6 text length 45 chars
                 .toString();
     }
 }

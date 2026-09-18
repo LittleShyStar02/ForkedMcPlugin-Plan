@@ -9,9 +9,9 @@ import ServerAccordion from "../../components/accordion/ServerAccordion";
 import {usePlayer} from "../layout/PlayerPage";
 import {useTranslation} from "react-i18next";
 import PlayerPingGraph from "../../components/graphs/PlayerPingGraph";
-import LoadIn from "../../components/animation/LoadIn";
-import ExtendableRow from "../../components/layout/extension/ExtendableRow";
-import {useAuth} from "../../hooks/authenticationHook";
+import LoadIn from "../../components/animation/LoadIn.tsx";
+import ExtendableRow from "../../components/layout/extension/ExtendableRow.tsx";
+import {useAuth} from "../../hooks/authenticationHook.tsx";
 
 const PingGraphCard = ({player}) => {
     const {t} = useTranslation();
@@ -21,8 +21,8 @@ const PingGraphCard = ({player}) => {
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black" style={{width: '100%'}}>
-                    <Fa icon={faSignal} className="col-amber"/> {t('html.label.ping')}
+                <h6 className="col-text" style={{width: '100%'}}>
+                    <Fa icon={faSignal} className="col-ping"/> {t('html.label.ping')}
                 </h6>
             </Card.Header>
             {hasPingData && <PlayerPingGraph data={player.ping_graph}/>}
@@ -36,8 +36,8 @@ const ServersCard = ({player}) => {
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black" style={{width: '100%'}}>
-                    <Fa icon={faNetworkWired} className="col-light-green"/> {t('html.label.servers')}
+                <h6 className="col-text" style={{width: '100%'}}>
+                    <Fa icon={faNetworkWired} className="col-servers"/> {t('html.label.servers')}
                     <span className="float-end">
                     <Fa icon={faHandPointer}/> <small>{t('html.text.clickToExpand')}</small>
                 </span>
@@ -55,8 +55,8 @@ const ServerPieCard = ({player}) => {
     return (
         <Card>
             <Card.Header>
-                <h6 className="col-black" style={{width: '100%'}}>
-                    <Fa icon={faNetworkWired} className="col-teal"/> {t('html.label.serverPlaytime')}
+                <h6 className="col-text" style={{width: '100%'}}>
+                    <Fa icon={faNetworkWired} className="col-sessions"/> {t('html.label.serverPlaytime')}
                 </h6>
             </Card.Header>
             <ServerPie

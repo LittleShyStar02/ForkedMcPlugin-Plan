@@ -23,11 +23,14 @@ import com.djrapitops.plan.extension.implementation.ExtensionRegister;
 import com.djrapitops.plan.extension.implementation.ExtensionWrapper;
 import com.djrapitops.plan.extension.implementation.builder.ExtDataBuilder;
 import com.djrapitops.plan.extension.implementation.providers.gathering.DataValueGatherer;
+import com.djrapitops.plan.extension.implementation.providers.gathering.ExtensionMetadataStorage;
 import com.djrapitops.plan.identification.ServerInfo;
 import com.djrapitops.plan.identification.UUIDUtility;
 import com.djrapitops.plan.processing.Processing;
 import com.djrapitops.plan.settings.config.ExtensionSettings;
 import com.djrapitops.plan.settings.config.PlanConfig;
+import com.djrapitops.plan.settings.locale.Locale;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.utilities.logging.ErrorContext;
 import com.djrapitops.plan.utilities.logging.ErrorLogger;
@@ -51,11 +54,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ExtensionSvc implements ExtensionService {
 
     private final PlanConfig config;
+    private final Locale locale;
     private final DBSystem dbSystem;
     private final ComponentSvc componentService;
     private final ServerInfo serverInfo;
     private final Processing processing;
     private final ExtensionRegister extensionRegister;
+    private final ExtensionMetadataStorage extensionMetadataStorage;
     private final UUIDUtility uuidUtility;
     private final PluginLogger logger;
     private final ErrorLogger errorLogger;
@@ -65,22 +70,25 @@ public class ExtensionSvc implements ExtensionService {
 
     @Inject
     public ExtensionSvc(
-            PlanConfig config,
+            PlanConfig config, Locale locale,
             DBSystem dbSystem,
             ComponentSvc componentService,
             ServerInfo serverInfo,
             Processing processing,
             ExtensionRegister extensionRegister,
+            ExtensionMetadataStorage extensionMetadataStorage,
             UUIDUtility uuidUtility,
             PluginLogger logger,
             ErrorLogger errorLogger
     ) {
         this.config = config;
+        this.locale = locale;
         this.dbSystem = dbSystem;
         this.componentService = componentService;
         this.serverInfo = serverInfo;
         this.processing = processing;
         this.extensionRegister = extensionRegister;
+        this.extensionMetadataStorage = extensionMetadataStorage;
         this.uuidUtility = uuidUtility;
         this.logger = logger;
         this.errorLogger = errorLogger;
@@ -104,7 +112,7 @@ public class ExtensionSvc implements ExtensionService {
                 context.related(suppressedException.getMessage());
             }
 
-            logger.warn("One or more extensions failed to register (They can be disabled in Plan config).");
+            logger.warn(locale.getString(PluginLang.EXTENSION_FAILED));
             errorLogger.warn(failedToRegisterOne, context.build());
         }
     }
@@ -120,13 +128,13 @@ public class ExtensionSvc implements ExtensionService {
             logger.warn("DataExtension API implementation mistake for " + pluginName + ": " + warning);
         }
 
-        DataValueGatherer gatherer = new DataValueGatherer(extension, dbSystem, componentService, serverInfo, errorLogger);
+        DataValueGatherer gatherer = new DataValueGatherer(extension, dbSystem, extensionMetadataStorage, componentService, serverInfo, errorLogger);
         gatherer.storeExtensionInformation();
         extensionGatherers.put(pluginName, gatherer);
 
         processing.submitNonCritical(() -> updateServerValues(gatherer, CallEvents.SERVER_EXTENSION_REGISTER));
 
-        logger.info("Registered extension: " + pluginName);
+        logger.info(locale.getString(PluginLang.EXTENSION_REGISTERED, pluginName));
         return Optional.of(new CallerImplementation(gatherer, this, processing));
     }
 
@@ -150,7 +158,7 @@ public class ExtensionSvc implements ExtensionService {
                 errorLogger.warn(e, ErrorContext.builder()
                         .whatToDo("Create 'Plugins." + pluginName + ".Enabled: true' setting manually.")
                         .related("Section: " + pluginName).build());
-                logger.warn("Could not register DataExtension for " + pluginName + " due to " + e.toString());
+                logger.warn(locale.getString(PluginLang.EXTENSION_ERROR, pluginName, e.toString()));
                 return true;
             }
         }
@@ -197,5 +205,9 @@ public class ExtensionSvc implements ExtensionService {
 
     public void disableUpdates() {
         enabled.set(false);
+    }
+
+    public ExtensionMetadataStorage getExtensionMetadataStorage() {
+        return extensionMetadataStorage;
     }
 }

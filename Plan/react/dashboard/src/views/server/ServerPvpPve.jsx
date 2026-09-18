@@ -3,13 +3,13 @@ import PvpPveAsNumbersCard from "../../components/cards/server/tables/PvpPveAsNu
 import {Col} from "react-bootstrap";
 import PvpKillsTableCard from "../../components/cards/common/PvpKillsTableCard";
 import PvpPveInsightsCard from "../../components/cards/server/insights/PvpPveInsightsCard";
-import {useParams} from "react-router-dom";
+import {useParams} from "react-router";
 import {useDataRequest} from "../../hooks/dataFetchHook";
 import {fetchKills, fetchPvpPve} from "../../service/serverService";
-import ErrorView from "../ErrorView";
-import LoadIn from "../../components/animation/LoadIn";
-import ExtendableRow from "../../components/layout/extension/ExtendableRow";
-import {useAuth} from "../../hooks/authenticationHook";
+import ErrorView from "../ErrorView.tsx";
+import LoadIn from "../../components/animation/LoadIn.tsx";
+import ExtendableRow from "../../components/layout/extension/ExtendableRow.tsx";
+import {useAuth} from "../../hooks/authenticationHook.tsx";
 
 const ServerPvpPve = () => {
     const {hasPermission} = useAuth();

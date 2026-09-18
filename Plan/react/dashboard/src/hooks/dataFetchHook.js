@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from "react";
-import {useNavigation} from "./navigationHook";
+import {useNavigation} from "./navigationHook.tsx";
 import {useDataStore} from "./datastoreHook";
-import {useMetadata} from "./metadataHook";
+import {useMetadata} from "./metadataHook.tsx";
 import {staticSite} from "../service/backendConfiguration";
 
 export const useDataRequest = (fetchMethod, parameters, shouldRequest) => {
@@ -55,7 +55,12 @@ export const useDataRequest = (fetchMethod, parameters, shouldRequest) => {
             } else if (error) {
                 console.warn(error);
                 datastore.finishUpdate(fetchMethod)
-                setLoadingError(error);
+                const isObject = error?.data !== null && typeof error?.data === 'object' && !Array.isArray(error?.data);
+                if (isObject) {
+                    setLoadingError({...error, ...error.data, data: undefined})
+                } else {
+                    setLoadingError(error);
+                }
                 finishUpdate(0, "Error: " + error.message, datastore.isSomethingUpdating());
             }
         };

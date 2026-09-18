@@ -22,12 +22,15 @@ import com.djrapitops.plan.delivery.formatting.Formatters;
 import com.djrapitops.plan.gathering.domain.GMTimes;
 import com.djrapitops.plan.gathering.domain.TPS;
 import com.djrapitops.plan.identification.ServerUUID;
+import com.djrapitops.plan.settings.locale.Locale;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.objects.SessionQueries;
 import com.djrapitops.plan.storage.database.queries.objects.TPSQueries;
 import com.djrapitops.plan.storage.database.queries.objects.WorldTimesQueries;
 import com.djrapitops.plan.utilities.analysis.Percentage;
+import net.playeranalytics.plugin.server.PluginLogger;
 import org.apache.commons.text.WordUtils;
 
 import javax.inject.Inject;
@@ -39,23 +42,29 @@ import java.util.concurrent.TimeUnit;
  * Creates JSON payload for /server-page Sessions tab.
  *
  * @author AuroraLS3
+ * @deprecated Use /v1/datapoint instead (types SERVER_OCCUPIED, PLAYTIME, AFK_TIME, AFK_TIME_PERCENTAGE, MOST_ACTIVE_GAMEMODE).
  */
 @Singleton
+@Deprecated(since = "2026-04-05 / 5.7 build 3341")
 public class SessionsOverviewJSONCreator implements ServerTabJSONCreator<Map<String, Object>> {
 
     private final DBSystem dbSystem;
+    private final PluginLogger logger;
+    private final Locale locale;
 
-    private final Formatter<Long> timeAmount;
     private final Formatter<Double> percentage;
 
     @Inject
     public SessionsOverviewJSONCreator(
             DBSystem dbSystem,
+            PluginLogger logger,
+            Locale locale,
             Formatters formatters
     ) {
         this.dbSystem = dbSystem;
+        this.logger = logger;
+        this.locale = locale;
 
-        timeAmount = formatters.timeAmount();
         percentage = formatters.percentage();
     }
 
@@ -64,6 +73,8 @@ public class SessionsOverviewJSONCreator implements ServerTabJSONCreator<Map<Str
     }
 
     private Map<String, Object> createInsightsMap(ServerUUID serverUUID) {
+        logger.warn(locale.getString(PluginLang.DEPRECATED_ENDPOINT_CALL, "/v1/sessionsOverview", "/v1/datapoint"));
+
         Database db = dbSystem.getDatabase();
         long now = System.currentTimeMillis();
         long monthAgo = now - TimeUnit.DAYS.toMillis(30L);
@@ -73,15 +84,15 @@ public class SessionsOverviewJSONCreator implements ServerTabJSONCreator<Map<Str
 
         Map<String, Object> insights = new HashMap<>();
 
-        long uptime = TimeUnit.DAYS.toMillis(30L) - tpsMutator.serverDownTime();
+        long uptime = tpsMutator.serverUptime();
         long occupied = tpsMutator.serverOccupiedTime();
-        insights.put("server_occupied", timeAmount.apply(occupied));
+        insights.put("server_occupied", occupied);
         insights.put("server_occupied_perc", percentage.apply(Percentage.calculate(occupied, uptime, -1)));
 
         Long playtime = db.query(SessionQueries.playtime(monthAgo, now, serverUUID));
         Long afkTime = db.query(SessionQueries.afkTime(monthAgo, now, serverUUID));
-        insights.put("total_playtime", timeAmount.apply(playtime));
-        insights.put("afk_time", timeAmount.apply(afkTime));
+        insights.put("total_playtime", playtime);
+        insights.put("afk_time", afkTime);
         insights.put("afk_time_perc", percentage.apply(Percentage.calculate(afkTime, playtime, -1)));
 
         GMTimes gmTimes = db.query(WorldTimesQueries.fetchGMTimes(monthAgo, now, serverUUID));

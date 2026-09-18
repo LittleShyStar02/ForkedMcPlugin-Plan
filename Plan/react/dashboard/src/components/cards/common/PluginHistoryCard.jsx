@@ -1,13 +1,13 @@
 import React from 'react';
-import CardHeader from "../CardHeader";
+import CardHeader from "../CardHeader.tsx";
 import {faCodeCompare, faCube, faSignal} from "@fortawesome/free-solid-svg-icons";
 import {Card} from "react-bootstrap";
-import {ErrorViewCard} from "../../../views/ErrorView";
-import FormattedDate from "../../text/FormattedDate";
+import {ErrorViewCard} from "../../../views/ErrorView.tsx";
+import FormattedDate from "../../text/FormattedDate.tsx";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
 import {faCalendar} from "@fortawesome/free-regular-svg-icons";
 import {useTranslation} from "react-i18next";
-import {CardLoader} from "../../navigation/Loader";
+import {CardLoader} from "../../navigation/Loader.tsx";
 import DataTablesTable from "../../table/DataTablesTable";
 
 const PluginHistoryCard = ({data, loadingError}) => {
@@ -53,7 +53,7 @@ const PluginHistoryCard = ({data, loadingError}) => {
 
     return (
         <Card>
-            <CardHeader icon={faCodeCompare} label={'html.label.pluginVersionHistory'} color={"indigo"}/>
+            <CardHeader icon={faCodeCompare} label={'html.label.pluginVersionHistory'} color={"plugin-versions"}/>
             <DataTablesTable id={"plugin-history"} options={options} rowKeyFunction={rowKeyFunction}/>
         </Card>
     )

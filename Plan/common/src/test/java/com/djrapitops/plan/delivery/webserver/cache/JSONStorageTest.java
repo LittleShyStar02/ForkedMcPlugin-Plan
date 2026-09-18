@@ -32,7 +32,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,10 +54,8 @@ class JSONStorageTest {
 
     private Optional<File> findTheFile() {
         File[] files = tempDir.toFile().listFiles();
-        if (files != null) {
-            for (File file : files) {
-                return Optional.of(file);
-            }
+        if (files != null && files.length > 0) {
+            return Optional.of(files[0]);
         }
         return Optional.empty();
     }
@@ -71,7 +68,7 @@ class JSONStorageTest {
         assertEquals("Identifier-" + stored.timestamp + ".json", file.getName());
         try (Stream<String> lines = Files.lines(file.toPath())) {
             List<String> expected = Collections.singletonList(stored.json);
-            List<String> result = lines.collect(Collectors.toList());
+            List<String> result = lines.toList();
             assertEquals(expected, result);
         }
     }
@@ -84,7 +81,7 @@ class JSONStorageTest {
         assertEquals("Identifier-" + stored.timestamp + ".json", file.getName());
         try (Stream<String> lines = Files.lines(file.toPath())) {
             List<String> expected = Collections.singletonList(stored.json);
-            List<String> result = lines.collect(Collectors.toList());
+            List<String> result = lines.toList();
             assertEquals(expected, result);
         }
     }
@@ -99,7 +96,7 @@ class JSONStorageTest {
         assertEquals("Identifier-" + timestamp + ".json", file.getName());
         try (Stream<String> lines = Files.lines(file.toPath())) {
             List<String> expected = Collections.singletonList(stored.json);
-            List<String> result = lines.collect(Collectors.toList());
+            List<String> result = lines.toList();
             assertEquals(expected, result);
         }
     }
@@ -114,7 +111,7 @@ class JSONStorageTest {
         assertEquals("Identifier-" + timestamp + ".json", file.getName());
         try (Stream<String> lines = Files.lines(file.toPath())) {
             List<String> expected = Collections.singletonList(stored.json);
-            List<String> result = lines.collect(Collectors.toList());
+            List<String> result = lines.toList();
             assertEquals(expected, result);
         }
     }
@@ -166,10 +163,10 @@ class JSONStorageTest {
     }
 
     @Test
-    void doesNotFetchWrongThing() {
+    void doesNotFetchWrongResultWithSubstring() {
         long timestamp = System.currentTimeMillis();
         UNDER_TEST.storeJson(DataID.SESSIONS_OVERVIEW.name(), Collections.singletonList("data"), timestamp);
-        assertFalse(UNDER_TEST.fetchJsonMadeBefore(DataID.SESSIONS.name(), timestamp + TimeUnit.DAYS.toMillis(1L)).isPresent());
+        assertFalse(UNDER_TEST.fetchJsonMadeBefore("SESSIONS", timestamp + TimeUnit.DAYS.toMillis(1L)).isPresent());
     }
 
     @Test

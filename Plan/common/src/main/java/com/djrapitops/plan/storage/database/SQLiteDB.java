@@ -18,6 +18,7 @@ package com.djrapitops.plan.storage.database;
 
 import com.djrapitops.plan.exceptions.database.DBInitException;
 import com.djrapitops.plan.identification.ServerInfo;
+import com.djrapitops.plan.processing.Processing;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.PluginLang;
@@ -27,6 +28,7 @@ import com.djrapitops.plan.utilities.MiscUtils;
 import com.djrapitops.plan.utilities.SemaphoreAccessCounter;
 import com.djrapitops.plan.utilities.logging.ErrorLogger;
 import dagger.Lazy;
+import dev.vankka.dependencydownload.ApplicationDependencyManager;
 import net.playeranalytics.plugin.scheduling.RunnableFactory;
 import net.playeranalytics.plugin.scheduling.Task;
 import net.playeranalytics.plugin.server.PluginLogger;
@@ -37,7 +39,6 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.net.URLConnection;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -51,16 +52,14 @@ public class SQLiteDB extends SQLDB {
 
     private final File databaseFile;
     private final String dbName;
-    private Connection connection;
-    private Task connectionPingTask;
-
     /*
      * In charge of keeping a single thread in control of the connection to avoid
      * one thread closing the connection while another is executing a statement as
      * that might lead to a SIGSEGV signal JVM crash.
      */
     private final SemaphoreAccessCounter connectionLock;
-
+    private Connection connection;
+    private Task connectionPingTask;
     private Constructor<?> connectionConstructor;
 
     private SQLiteDB(
@@ -71,9 +70,21 @@ public class SQLiteDB extends SQLDB {
             Lazy<ServerInfo> serverInfo,
             RunnableFactory runnableFactory,
             PluginLogger logger,
-            ErrorLogger errorLogger
+            ErrorLogger errorLogger,
+            ApplicationDependencyManager applicationDependencyManager,
+            Processing processing
     ) {
-        super(() -> serverInfo.get().getServerUUID(), locale, config, files, runnableFactory, logger, errorLogger);
+        super(
+                () -> serverInfo.get().getServerUUID(),
+                locale,
+                config,
+                files,
+                runnableFactory,
+                logger,
+                errorLogger,
+                applicationDependencyManager,
+                processing
+        );
         dbName = databaseFile.getName();
         this.databaseFile = databaseFile;
         connectionLock = new SemaphoreAccessCounter();
@@ -102,7 +113,7 @@ public class SQLiteDB extends SQLDB {
 
     public Connection getNewConnection(File dbFile) throws SQLException {
         if (driverClassLoader == null) {
-            logger.info("Downloading SQLite Driver, this may take a while...");
+            logger.info(locale.getString(PluginLang.DB_DOWNLOAD_DRIVER, "SQLite"));
             downloadDriver();
         }
         String dbFilePath = dbFile.getAbsolutePath();
@@ -149,16 +160,6 @@ public class SQLiteDB extends SQLDB {
             return tryToConnect(dbFilePath, false);
         } catch (InstantiationException | IllegalAccessException e) {
             throw new DBInitException("Failed to initialize SQLite Driver", e);
-        } finally {
-            new URLConnection(null) {
-                @Override
-                public void connect() {
-                    // Hack for fixing a class loading crash (https://github.com/plan-player-analytics/Plan/issues/2202)
-                    // Caused by https://github.com/xerial/sqlite-jdbc/issues/656
-                    // Where setDefaultUseCaches is set to false
-                    // TODO Remove after the underlying issue has been fixed in SQLite
-                }
-            }.setDefaultUseCaches(true);
         }
     }
 
@@ -248,9 +249,11 @@ public class SQLiteDB extends SQLDB {
         private final PlanConfig config;
         private final Lazy<ServerInfo> serverInfo;
         private final RunnableFactory runnableFactory;
+        private final Processing processing;
         private final PluginLogger logger;
         private final ErrorLogger errorLogger1;
         private final PlanFiles files;
+        private final ApplicationDependencyManager applicationDependencyManager;
 
         @Inject
         public Factory(
@@ -258,17 +261,20 @@ public class SQLiteDB extends SQLDB {
                 PlanConfig config,
                 PlanFiles files,
                 Lazy<ServerInfo> serverInfo,
-                RunnableFactory runnableFactory,
+                RunnableFactory runnableFactory, Processing processing,
                 PluginLogger logger,
-                ErrorLogger errorLogger1
+                ErrorLogger errorLogger1,
+                ApplicationDependencyManager applicationDependencyManager
         ) {
             this.locale = locale;
             this.config = config;
             this.files = files;
             this.serverInfo = serverInfo;
             this.runnableFactory = runnableFactory;
+            this.processing = processing;
             this.logger = logger;
             this.errorLogger1 = errorLogger1;
+            this.applicationDependencyManager = applicationDependencyManager;
         }
 
         public SQLiteDB usingDefaultFile() {
@@ -282,7 +288,10 @@ public class SQLiteDB extends SQLDB {
         public SQLiteDB usingFile(File databaseFile) {
             return new SQLiteDB(databaseFile,
                     locale, config, files, serverInfo,
-                    runnableFactory, logger, errorLogger1
+                    runnableFactory, logger, errorLogger1,
+                    applicationDependencyManager,
+                    processing
+
             );
         }
 

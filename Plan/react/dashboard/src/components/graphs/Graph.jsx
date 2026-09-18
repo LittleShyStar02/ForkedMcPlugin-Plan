@@ -1,26 +1,28 @@
-import {useTheme} from "../../hooks/themeHook";
+import {useTheme} from "../../hooks/themeHook.tsx";
 import React, {useEffect} from "react";
-import Highcharts from "highcharts/highstock";
-import HighchartsMore from "highcharts/highcharts-more";
-import Dumbbell from "highcharts/modules/dumbbell";
-import NoDataDisplay from "highcharts/modules/no-data-to-display"
-import Accessibility from "highcharts/modules/accessibility"
+import Highcharts from "highcharts/esm/highstock";
+import "highcharts/esm/modules/accessibility";
+import "highcharts/esm/highcharts-more";
+import "highcharts/esm/modules/dumbbell";
+import "highcharts/esm/modules/no-data-to-display";
 import {useTranslation} from "react-i18next";
+import {localeService} from "../../service/localeService.js";
 
 const Graph = ({
-                       id,
-                       options,
-                       tall,
-                   }) => {
+                   id,
+                   options,
+                   tall,
+               }) => {
     const {t} = useTranslation()
     const {graphTheming, nightModeEnabled} = useTheme();
 
     useEffect(() => {
-        NoDataDisplay(Highcharts);
-        Accessibility(Highcharts);
-        HighchartsMore(Highcharts);
-        Dumbbell(Highcharts);
-        Highcharts.setOptions({lang: {noData: t('html.label.noDataToDisplay')}})
+        Highcharts.setOptions({
+            lang: {
+                locale: localeService.getIntlFriendlyLocale(),
+                noData: t('html.label.noDataToDisplay')
+            }
+        })
         Highcharts.setOptions(graphTheming);
         Highcharts.chart(id, options);
     }, [options, id, t,

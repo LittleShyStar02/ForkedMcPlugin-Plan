@@ -4,12 +4,15 @@ import ServersTable, {ServerSortOption} from "../../table/ServersTable";
 import {faNetworkWired} from "@fortawesome/free-solid-svg-icons";
 import {useTranslation} from "react-i18next";
 import {FontAwesomeIcon as Fa} from "@fortawesome/react-fontawesome";
-import {CardLoader} from "../../navigation/Loader";
+import {useAuth} from "../../../hooks/authenticationHook.tsx";
+import {calculatePermission} from "../../datapoint/QueryDatapoint.tsx";
 
 const SortDropDown = ({sortBy, sortReversed, setSortBy}) => {
     const {t} = useTranslation();
+    const {hasPermission} = useAuth();
 
-    const sortOptions = Object.values(ServerSortOption);
+    const sortOptions = Object.values(ServerSortOption)
+        .filter(sortBy => hasPermission(calculatePermission(sortBy.data, {server: "true"})));
 
     const getSortIcon = useCallback(() => {
         return sortReversed ? sortBy.iconDesc : sortBy.iconAsc;
@@ -17,7 +20,7 @@ const SortDropDown = ({sortBy, sortReversed, setSortBy}) => {
 
     return (
         <Dropdown className="float-end" style={{position: "absolute", right: "0.5rem"}}>
-            <Dropdown.Toggle variant=''>
+            <Dropdown.Toggle variant='' style={{'--bs-btn-color': 'var(--color-forms-input-text)'}}>
                 <Fa icon={getSortIcon()}/> {t(sortBy.label)}
             </Dropdown.Toggle>
 
@@ -33,14 +36,10 @@ const SortDropDown = ({sortBy, sortReversed, setSortBy}) => {
     )
 }
 
-const ServersTableCard = ({loaded, servers, onSelect}) => {
+const ServersTableCard = ({servers, onSelect}) => {
     const {t} = useTranslation();
     const [sortBy, setSortBy] = useState(ServerSortOption.ALPHABETICAL);
     const [sortReversed, setSortReversed] = useState(false);
-
-    if (!loaded) {
-        return <CardLoader/>
-    }
 
     const setSort = option => {
         if (sortBy === option) {
@@ -54,8 +53,8 @@ const ServersTableCard = ({loaded, servers, onSelect}) => {
     return (
         <Card>
             <Card.Header style={{width: "100%"}}>
-                <h6 className="col-black">
-                    <Fa icon={faNetworkWired} className={"col-light-green"}/> {t('html.label.servers')}
+                <h6 className="col-text">
+                    <Fa icon={faNetworkWired} className={"col-servers"}/> {t('html.label.servers')}
                 </h6>
                 <SortDropDown sortBy={sortBy} setSortBy={setSort} sortReversed={sortReversed}/>
             </Card.Header>

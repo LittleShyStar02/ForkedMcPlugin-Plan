@@ -29,7 +29,9 @@ import com.djrapitops.plan.gathering.domain.TPS;
 import com.djrapitops.plan.identification.ServerUUID;
 import com.djrapitops.plan.settings.config.PlanConfig;
 import com.djrapitops.plan.settings.config.paths.DisplaySettings;
+import com.djrapitops.plan.settings.locale.Locale;
 import com.djrapitops.plan.settings.locale.lang.GenericLang;
+import com.djrapitops.plan.settings.locale.lang.PluginLang;
 import com.djrapitops.plan.storage.database.DBSystem;
 import com.djrapitops.plan.storage.database.Database;
 import com.djrapitops.plan.storage.database.queries.objects.TPSQueries;
@@ -45,27 +47,31 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
+import net.playeranalytics.plugin.server.PluginLogger;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
  * Creates JSON payload for /server-page Performance tab.
  *
  * @author AuroraLS3
+ * @deprecated Use /v1/datapoint instead (types TPS_LOW_SPIKES, UPTIME, DOWNTIME, TPS_AVERAGE, PLAYERS_ONLINE_AVERAGE, MSPT_AVERAGE, CPU_AVERAGE, RAM_AVERAGE, ENTITIES_AVERAGE, CHUNKS_AVERAGE, DISK_MAX, DISK_MIN).
  */
 @Singleton
 @Path("/v1/network/performanceOverview")
+@Deprecated(since = "2026-05-24 / 5.7 build 3460")
 public class NetworkPerformanceJSONResolver implements Resolver {
 
     private final PlanConfig config;
     private final DBSystem dbSystem;
+    private final Locale locale;
+    private final PluginLogger logger;
 
-    private final Formatter<Double> decimals;
-    private final Formatter<Long> timeAmount;
     private final Formatter<Double> percentage;
     private final Formatter<Double> byteSize;
     private final Gson gson;
@@ -73,16 +79,16 @@ public class NetworkPerformanceJSONResolver implements Resolver {
     @Inject
     public NetworkPerformanceJSONResolver(
             PlanConfig config,
-            DBSystem dbSystem,
+            DBSystem dbSystem, Locale locale, PluginLogger logger,
             Formatters formatters,
             Gson gson
     ) {
         this.config = config;
         this.dbSystem = dbSystem;
+        this.locale = locale;
+        this.logger = logger;
 
-        decimals = formatters.decimals();
         percentage = formatters.percentage();
-        timeAmount = formatters.timeAmount();
         byteSize = formatters.byteSize();
         this.gson = gson;
     }
@@ -107,6 +113,8 @@ public class NetworkPerformanceJSONResolver implements Resolver {
     )
     @Override
     public Optional<Response> resolve(Request request) {
+        logger.warn(locale.getString(PluginLang.DEPRECATED_ENDPOINT_CALL, "/v1/network/performanceOverview", "/v1/datapoint"));
+
         List<ServerUUID> serverUUIDs = request.getQuery().get("servers")
                 .map(this::getUUIDList)
                 .orElse(Collections.emptyList())
@@ -160,55 +168,71 @@ public class NetworkPerformanceJSONResolver implements Resolver {
         numbers.put("low_tps_spikes_7d", tpsDataWeek.lowTpsSpikeCount(tpsThreshold));
         numbers.put("low_tps_spikes_24h", tpsDataDay.lowTpsSpikeCount(tpsThreshold));
 
-        long downtimeMonth = getTotalDowntime(mutatorsOfServersMonth);
-        long downtimeWeek = getTotalDowntime(mutatorsOfServersWeek);
-        long downtimeDay = getTotalDowntime(mutatorsOfServersDay);
-        numbers.put("server_downtime_30d", timeAmount.apply(downtimeMonth));
-        numbers.put("server_downtime_7d", timeAmount.apply(downtimeWeek));
-        numbers.put("server_downtime_24h", timeAmount.apply(downtimeDay));
+        long downtimeMonth = getTotal(mutatorsOfServersMonth, TPSMutator::serverDownTime);
+        long downtimeWeek = getTotal(mutatorsOfServersWeek, TPSMutator::serverDownTime);
+        long downtimeDay = getTotal(mutatorsOfServersDay, TPSMutator::serverDownTime);
+        numbers.put("server_downtime_30d", downtimeMonth);
+        numbers.put("server_downtime_7d", downtimeWeek);
+        numbers.put("server_downtime_24h", downtimeDay);
 
         if (!tpsData.isEmpty()) {
-            numbers.put("avg_server_downtime_30d", timeAmount.apply(downtimeMonth / tpsData.size()));
-            numbers.put("avg_server_downtime_7d", timeAmount.apply(downtimeWeek / tpsData.size()));
-            numbers.put("avg_server_downtime_24h", timeAmount.apply(downtimeDay / tpsData.size()));
+            numbers.put("avg_server_downtime_30d", downtimeMonth / tpsData.size());
+            numbers.put("avg_server_downtime_7d", downtimeWeek / tpsData.size());
+            numbers.put("avg_server_downtime_24h", downtimeDay / tpsData.size());
         } else {
             numbers.put("avg_server_downtime_30d", "-");
             numbers.put("avg_server_downtime_7d", "-");
             numbers.put("avg_server_downtime_24h", "-");
         }
 
-        numbers.put("players_30d", format(tpsDataMonth.averagePlayers()));
-        numbers.put("players_7d", format(tpsDataWeek.averagePlayers()));
-        numbers.put("players_24h", format(tpsDataDay.averagePlayers()));
-        numbers.put("tps_30d", format(tpsDataMonth.averageTPS()));
-        numbers.put("tps_7d", format(tpsDataWeek.averageTPS()));
-        numbers.put("tps_24h", format(tpsDataDay.averageTPS()));
+        long uptimeMonth = getTotal(mutatorsOfServersMonth, TPSMutator::serverUptime);
+        long uptimeWeek = getTotal(mutatorsOfServersWeek, TPSMutator::serverUptime);
+        long uptimeDay = getTotal(mutatorsOfServersDay, TPSMutator::serverUptime);
+        numbers.put("server_uptime_30d", uptimeMonth);
+        numbers.put("server_uptime_7d", uptimeWeek);
+        numbers.put("server_uptime_24h", uptimeDay);
+
+        if (!tpsData.isEmpty()) {
+            numbers.put("avg_server_uptime_30d", uptimeMonth / tpsData.size());
+            numbers.put("avg_server_uptime_7d", uptimeWeek / tpsData.size());
+            numbers.put("avg_server_uptime_24h", uptimeDay / tpsData.size());
+        } else {
+            numbers.put("avg_server_uptime_30d", "-");
+            numbers.put("avg_server_uptime_7d", "-");
+            numbers.put("avg_server_uptime_24h", "-");
+        }
+
+        numbers.put("players_30d", tpsDataMonth.averagePlayers());
+        numbers.put("players_7d", tpsDataWeek.averagePlayers());
+        numbers.put("players_24h", tpsDataDay.averagePlayers());
+        numbers.put("tps_30d", tpsDataMonth.averageTPS());
+        numbers.put("tps_7d", tpsDataWeek.averageTPS());
+        numbers.put("tps_24h", tpsDataDay.averageTPS());
         numbers.put("cpu_30d", formatPercentage(tpsDataMonth.averageCPU()));
         numbers.put("cpu_7d", formatPercentage(tpsDataWeek.averageCPU()));
         numbers.put("cpu_24h", formatPercentage(tpsDataDay.averageCPU()));
         numbers.put("ram_30d", formatBytes(tpsDataMonth.averageRAM()));
         numbers.put("ram_7d", formatBytes(tpsDataWeek.averageRAM()));
         numbers.put("ram_24h", formatBytes(tpsDataDay.averageRAM()));
-        numbers.put("entities_30d", format((int) tpsDataMonth.averageEntities()));
-        numbers.put("entities_7d", format((int) tpsDataWeek.averageEntities()));
-        numbers.put("entities_24h", format((int) tpsDataDay.averageEntities()));
-        numbers.put("chunks_30d", format((int) tpsDataMonth.averageChunks()));
-        numbers.put("chunks_7d", format((int) tpsDataWeek.averageChunks()));
-        numbers.put("chunks_24h", format((int) tpsDataDay.averageChunks()));
+        numbers.put("entities_30d", (int) tpsDataMonth.averageEntities());
+        numbers.put("entities_7d", (int) tpsDataWeek.averageEntities());
+        numbers.put("entities_24h", (int) tpsDataDay.averageEntities());
+        numbers.put("chunks_30d", (int) tpsDataMonth.averageChunks());
+        numbers.put("chunks_7d", (int) tpsDataWeek.averageChunks());
+        numbers.put("chunks_24h", (int) tpsDataDay.averageChunks());
+        numbers.put("mspt_average_30d", tpsDataMonth.averageMspt());
+        numbers.put("mspt_average_7d", tpsDataWeek.averageMspt());
+        numbers.put("mspt_average_24h", tpsDataDay.averageMspt());
 
         return numbers;
     }
 
-    private long getTotalDowntime(Map<Integer, TPSMutator> mutatorsOfServersMonth) {
+    private long getTotal(Map<Integer, TPSMutator> mutatorsOfServersMonth, Function<TPSMutator, Long> transform) {
         long downTime = 0L;
         for (TPSMutator tpsMutator : mutatorsOfServersMonth.values()) {
-            downTime += tpsMutator.serverDownTime();
+            downTime += transform.apply(tpsMutator);
         }
         return downTime;
-    }
-
-    private String format(double value) {
-        return value != -1 ? decimals.apply(value) : GenericLang.UNAVAILABLE.getKey();
     }
 
     private String formatBytes(double value) {

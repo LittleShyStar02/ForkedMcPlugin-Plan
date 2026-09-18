@@ -19,8 +19,11 @@ package com.djrapitops.plan.storage.database.queries.objects;
 import com.djrapitops.plan.delivery.domain.auth.User;
 import com.djrapitops.plan.delivery.domain.datatransfer.preferences.Preferences;
 import com.djrapitops.plan.delivery.web.resolver.request.WebUser;
+import com.djrapitops.plan.delivery.webserver.auth.CookieMetadata;
+import com.djrapitops.plan.delivery.webserver.auth.IncompleteRegistration;
 import com.djrapitops.plan.storage.database.queries.Query;
 import com.djrapitops.plan.storage.database.queries.QueryAllStatement;
+import com.djrapitops.plan.storage.database.sql.building.Select;
 import com.djrapitops.plan.storage.database.sql.building.Sql;
 import com.djrapitops.plan.storage.database.sql.tables.CookieTable;
 import com.djrapitops.plan.storage.database.sql.tables.UsersTable;
@@ -119,7 +122,7 @@ public class WebUserQueries {
         return db -> db.queryList(sql, WebUserQueries::extractUser);
     }
 
-    public static Query<Map<String, User>> fetchActiveCookies() {
+    public static Query<Map<String, CookieMetadata>> fetchActiveCookies() {
         String sql = SELECT +
                 SecurityTable.USERNAME + ',' +
                 UsersTable.USER_NAME + ',' +
@@ -127,6 +130,8 @@ public class WebUserQueries {
                 SecurityTable.SALT_PASSWORD_HASH + ',' +
                 WebGroupTable.NAME + ',' +
                 CookieTable.COOKIE + ',' +
+                CookieTable.EXPIRES + ',' +
+                CookieTable.IP_ADDRESS + ',' +
                 "GROUP_CONCAT(" + WebPermissionTable.PERMISSION + ",',') as user_permissions" +
                 FROM + CookieTable.TABLE_NAME + " c" +
                 INNER_JOIN + SecurityTable.TABLE_NAME + " s on c." + CookieTable.WEB_USERNAME + "=s." + SecurityTable.USERNAME +
@@ -141,10 +146,20 @@ public class WebUserQueries {
                 SecurityTable.LINKED_TO + ',' +
                 SecurityTable.SALT_PASSWORD_HASH + ',' +
                 WebGroupTable.NAME + ',' +
-                CookieTable.COOKIE;
+                CookieTable.COOKIE + ',' +
+                CookieTable.EXPIRES + ',' +
+                CookieTable.IP_ADDRESS;
 
-        return db -> db.queryMap(sql, (set, byCookie) -> byCookie.put(set.getString(CookieTable.COOKIE), extractUser(set)),
+        return db -> db.queryMap(sql, (set, byCookie) -> byCookie.put(set.getString(CookieTable.COOKIE), extractCookieMetadata(set)),
                 System.currentTimeMillis());
+    }
+
+    private static CookieMetadata extractCookieMetadata(ResultSet set) throws SQLException {
+        return new CookieMetadata(
+                extractUser(set),
+                set.getLong(CookieTable.EXPIRES),
+                set.getString(CookieTable.IP_ADDRESS)
+        );
     }
 
     private static User extractUser(ResultSet set) throws SQLException {
@@ -160,13 +175,8 @@ public class WebUserQueries {
         return new User(username, linkedTo != null ? linkedTo : "console", linkedToUUID, passwordHash, permissionGroup, new HashSet<>(permissions));
     }
 
-    public static Query<Map<String, Long>> getCookieExpiryTimes() {
-        String sql = SELECT + CookieTable.COOKIE + ',' + CookieTable.EXPIRES + FROM + CookieTable.TABLE_NAME;
-        return db -> db.queryMap(sql, (set, expiryTimes) -> expiryTimes.put(set.getString(CookieTable.COOKIE), set.getLong(CookieTable.EXPIRES)));
-    }
-
     public static Query<List<String>> fetchGroupNames() {
-        String sql = SELECT + WebGroupTable.NAME + FROM + WebGroupTable.TABLE_NAME;
+        String sql = SELECT + WebGroupTable.NAME + FROM + WebGroupTable.TABLE_NAME + ORDER_BY + WebGroupTable.NAME;
         return db -> db.queryList(sql, row -> row.getString(WebGroupTable.NAME));
     }
 
@@ -180,7 +190,7 @@ public class WebUserQueries {
     }
 
     public static Query<List<String>> fetchAvailablePermissions() {
-        String sql = SELECT + WebPermissionTable.PERMISSION + FROM + WebPermissionTable.TABLE_NAME;
+        String sql = SELECT + WebPermissionTable.PERMISSION + FROM + WebPermissionTable.TABLE_NAME + ORDER_BY + WebPermissionTable.PERMISSION;
         return db -> db.queryList(sql, row -> row.getString(WebPermissionTable.PERMISSION));
     }
 
@@ -189,13 +199,11 @@ public class WebUserQueries {
     }
 
     public static Query<List<Integer>> fetchPermissionIds(@Untrusted Collection<String> permissions) {
+        if (permissions.isEmpty()) return db -> Collections.emptyList();
         String sql = SELECT + WebPermissionTable.ID +
                 FROM + WebPermissionTable.TABLE_NAME +
                 WHERE + WebPermissionTable.PERMISSION + " IN (" + Sql.nParameters(permissions.size()) + ")";
-        return db -> {
-            if (permissions.isEmpty()) return Collections.emptyList();
-            return db.queryList(sql, row -> row.getInt(WebPermissionTable.ID), permissions);
-        };
+        return db -> db.queryList(sql, row -> row.getInt(WebPermissionTable.ID), permissions);
     }
 
     public static Query<List<String>> fetchAllUsernames() {
@@ -218,6 +226,7 @@ public class WebUserQueries {
     }
 
     public static Query<List<Integer>> fetchGroupIds(List<String> groups) {
+        if (groups.isEmpty()) return db -> List.of();
         String sql = SELECT + WebGroupTable.ID +
                 FROM + WebGroupTable.TABLE_NAME +
                 WHERE + WebGroupTable.NAME + " IN (" + Sql.nParameters(groups.size()) + ')';
@@ -265,5 +274,32 @@ public class WebUserQueries {
                 INNER_JOIN + SecurityTable.TABLE_NAME + " s ON s." + SecurityTable.ID + "=p." + WebUserPreferencesTable.WEB_USER_ID;
         return db -> db.queryMap(sql, (results, to) ->
                 to.put(results.getString(SecurityTable.USERNAME), results.getString(WebUserPreferencesTable.PREFERENCES)));
+    }
+
+    public static Query<List<SecurityTable.Row>> fetchRows(int currentId, int rowLimit) {
+        String sql = Select.all(SecurityTable.TABLE_NAME)
+                .where(SecurityTable.ID + '>' + currentId)
+                .orderBy(SecurityTable.ID)
+                .limit(rowLimit)
+                .toString();
+        return db -> db.queryList(sql, SecurityTable.Row::extract);
+    }
+
+    public static Query<Set<Integer>> fetchPreferencesUserIds() {
+        String sql = SELECT + WebUserPreferencesTable.WEB_USER_ID + FROM + WebUserPreferencesTable.TABLE_NAME;
+        return db -> db.querySet(sql, row -> row.getInt(WebUserPreferencesTable.WEB_USER_ID));
+    }
+
+    public static Query<Optional<IncompleteRegistration>> fetchIncompleteRegistration(@Untrusted String code) {
+        return db -> db.queryOptional(RegistrationTable.SELECT_BY_CODE, WebUserQueries::extractIncompleteRegistration, code, System.currentTimeMillis());
+    }
+
+    private static IncompleteRegistration extractIncompleteRegistration(ResultSet set) throws SQLException {
+        return new IncompleteRegistration(
+                set.getString(RegistrationTable.USERNAME),
+                set.getString(RegistrationTable.SALT_PASSWORD_HASH),
+                set.getString(RegistrationTable.CODE),
+                set.getLong(RegistrationTable.EXPIRY_TIME)
+        );
     }
 }
